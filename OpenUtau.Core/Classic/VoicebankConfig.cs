@@ -35,6 +35,11 @@ namespace OpenUtau.Classic {
         /// Tone ranges. Each range specified as "C1-C4" or "C4".
         /// </summary>
         public string[] ToneRanges { get; set; }
+
+        /// <summary>
+        /// Only ENUNUmodel is supported. Singing style "power", "whisper", etc. Leave unspecified for main bank.
+        /// </summary>
+        public string Style { get; set; } = string.Empty;
     }
 
     public class VoicebankConfig {

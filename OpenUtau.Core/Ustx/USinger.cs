@@ -138,6 +138,10 @@ namespace OpenUtau.Core.Ustx {
                 toneRangesString = value;
             }
         }
+        public string Style {
+            get => subbank.Style;
+            set => subbank.Style = value;
+        }
 
         public readonly SortedSet<int> toneSet;
         public readonly Subbank subbank;

@@ -20,6 +20,7 @@ namespace OpenUtau.Core.Enunu {
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
             Format.Ustx.DYN,
             Format.Ustx.CLR,
+            Format.Ustx.STY,
             Format.Ustx.PITD,
             Format.Ustx.GENC,
             Format.Ustx.BREC,
@@ -80,71 +81,83 @@ namespace OpenUtau.Core.Enunu {
                     var ustPath = tmpPath + ".tmp";
                     var enutmpPath = tmpPath + "_enutemp";
                     var wavPath = Path.Join(PathManager.Inst.CachePath, $"enu-{phrase.hash:x16}.wav");
+                    var hedPath = Path.Join(PathManager.Inst.CachePath, $"enu-qst.hed");
                     var result = Layout(phrase);
                     if (!File.Exists(wavPath)) {
                         var config = EnunuConfig.Load(phrase.singer);
                         if (config.extensions.wav_synthesizer.Contains("vocoder")) {
-                            Log.Information($"Starting enunu vocoder synthesis \"{ustPath}\"");
-                            var enunuNotes = PhraseToEnunuNotes(phrase);
-                            // TODO: using first note tempo as ust tempo.
-                            EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
-                            var response = EnunuClient.Inst.SendRequest<VocoderResponse>(new string[] { "vocoder", ustPath, wavPath });
-                            if (response.error != null) {
-                                throw new Exception(response.error);
+                            var f0Path = Path.Join(enutmpPath, "f0.npy");
+                            if (!File.Exists(f0Path)) {
+                                Log.Information($"Starting enunu vocoder synthesis \"{ustPath}\"");
+                                var enunuNotes = PhraseToEnunuNotes(phrase);
+                                // TODO: using first note tempo as ust tempo.
+                                EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
+                                EnunuUtils.WriteHed(config, phrase.enu_singing_style, hedPath);
+                                var response = EnunuClient.Inst.SendRequest<VocoderResponse>(new string[] { "vocoder", ustPath, wavPath });
+                                if (response.error != null) {
+                                    throw new Exception(response.error);
+                                }
                             }
+                            var f0 = np.Load<double[]>(f0Path);
+                            int totalFrames = f0.Length;
+                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
+                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
+                            int headFrames = (int)Math.Round(headMs / config.framePeriod);
+                            int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
+                            var editorF0 = SampleCurve(phrase, phrase.pitches, 0, config.framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                         } else {
-                        var f0Path = Path.Join(enutmpPath, "f0.npy");
-                        var spPath = Path.Join(enutmpPath, "spectrogram.npy");
-                        var apPath = Path.Join(enutmpPath, "aperiodicity.npy");
-                        if (!File.Exists(f0Path) || !File.Exists(spPath) || !File.Exists(apPath)) {
-                            Log.Information($"Starting enunu acoustic \"{ustPath}\"");
-                            var enunuNotes = PhraseToEnunuNotes(phrase);
-                            // TODO: using first note tempo as ust tempo.
-                            EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
-                            var response = EnunuClient.Inst.SendRequest<AcousticResponse>(new string[] { "acoustic", ustPath });
-                            if (response.error != null) {
-                                throw new Exception(response.error);
+                            var f0Path = Path.Join(enutmpPath, "f0.npy");
+                            var spPath = Path.Join(enutmpPath, "spectrogram.npy");
+                            var apPath = Path.Join(enutmpPath, "aperiodicity.npy");
+                            if (!File.Exists(f0Path) || !File.Exists(spPath) || !File.Exists(apPath)) {
+                                Log.Information($"Starting enunu acoustic \"{ustPath}\"");
+                                var enunuNotes = PhraseToEnunuNotes(phrase);
+                                // TODO: using first note tempo as ust tempo.
+                                EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
+                                var response = EnunuClient.Inst.SendRequest<AcousticResponse>(new string[] { "acoustic", ustPath });
+                                if (response.error != null) {
+                                    throw new Exception(response.error);
+                                }
                             }
-                        }
-                        if (cancellation.IsCancellationRequested) {
-                            return new RenderResult();
-                        }
-                        var f0 = np.Load<double[]>(f0Path);
-                        var sp = np.Load<double[,]>(spPath);
-                        var ap = np.Load<double[,]>(apPath);
-                        int totalFrames = f0.Length;
-                        var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
-                        var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
-                        int headFrames = (int)Math.Round(headMs / config.framePeriod);
-                        int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
-                        var editorF0 = SampleCurve(phrase, phrase.pitches, 0, config.framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
-                        var gender = SampleCurve(phrase, phrase.gender, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                        var tension = SampleCurve(phrase, phrase.tension, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                        var breathiness = SampleCurve(phrase, phrase.breathiness, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                        var voicing = SampleCurve(phrase, phrase.voicing, 1.0, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.01 * x);
-                        int fftSize = (sp.GetLength(1) - 1) * 2;
-                        for (int i = 0; i < f0.Length; i++) {
-                            if (f0[i] < 50) {
-                                editorF0[i] = 0;
+                            if (cancellation.IsCancellationRequested) {
+                                return new RenderResult();
                             }
+                            var f0 = np.Load<double[]>(f0Path);
+                            var sp = np.Load<double[,]>(spPath);
+                            var ap = np.Load<double[,]>(apPath);
+                            int totalFrames = f0.Length;
+                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
+                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
+                            int headFrames = (int)Math.Round(headMs / config.framePeriod);
+                            int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
+                            var editorF0 = SampleCurve(phrase, phrase.pitches, 0, config.framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                            var gender = SampleCurve(phrase, phrase.gender, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                            var tension = SampleCurve(phrase, phrase.tension, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                            var breathiness = SampleCurve(phrase, phrase.breathiness, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                            var voicing = SampleCurve(phrase, phrase.voicing, 1.0, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.01 * x);
+                            int fftSize = (sp.GetLength(1) - 1) * 2;
+                            for (int i = 0; i < f0.Length; i++) {
+                                if (f0[i] < 50) {
+                                    editorF0[i] = 0;
+                                }
+                            }
+                            var samples = Worldline.WorldSynthesis(
+                                editorF0,
+                                sp, false, sp.GetLength(1),
+                                ap, false, fftSize,
+                                config.framePeriod, config.sampleRate,
+                                gender, tension, breathiness, voicing);
+                            result.samples = samples.Select(d => (float)d).ToArray();
+                            Wave.CorrectSampleScale(result.samples);
+                            if (config.sampleRate != 44100) {
+                                var signal = new NWaves.Signals.DiscreteSignal(config.sampleRate, result.samples);
+                                signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                                result.samples = signal.Samples;
+                            }
+                            var source = new WaveSource(0, 0, 0, 1);
+                            source.SetSamples(result.samples);
+                            WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                         }
-                        var samples = Worldline.WorldSynthesis(
-                            editorF0,
-                            sp, false, sp.GetLength(1),
-                            ap, false, fftSize,
-                            config.framePeriod, config.sampleRate,
-                            gender, tension, breathiness, voicing);
-                        result.samples = samples.Select(d => (float)d).ToArray();
-                        Wave.CorrectSampleScale(result.samples);
-                        if (config.sampleRate != 44100) {
-                            var signal = new NWaves.Signals.DiscreteSignal(config.sampleRate, result.samples);
-                            signal = NWaves.Operations.Operation.Resample(signal, 44100);
-                            result.samples = signal.Samples;
-                        }
-                        var source = new WaveSource(0, 0, 0, 1);
-                        source.SetSamples(result.samples);
-                        WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
-                    }
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
                     if (File.Exists(wavPath)) {

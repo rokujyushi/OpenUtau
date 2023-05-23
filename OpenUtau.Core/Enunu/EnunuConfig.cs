@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.IO;
-using System.Security.Cryptography.X509Certificates;
 using OpenUtau.Core.Ustx;
 
 namespace OpenUtau.Core.Enunu {
@@ -9,8 +8,8 @@ namespace OpenUtau.Core.Enunu {
         public string questionPath;
         public int sampleRate;
         public double framePeriod;
-        public bool enuType;
         public EnunuExtensions extensions;
+        public EnunuStyle styles;
 
         public static EnunuConfig Load(USinger singer) {
             var configPath = Path.Join(singer.Location, "enuconfig.yaml");
@@ -47,10 +46,8 @@ namespace OpenUtau.Core.Enunu {
                             config.questionPath = f.Substring(f.LastIndexOf(modelPath)); ;
                         }
                     }
-                    config.enuType = true;
                 }
-            }
-            else if (Directory.Exists(location)) {
+            } else if (Directory.Exists(location)) {
                 if (File.Exists(Path.Join(location, configYaml))) {
                     var configTxt = File.ReadAllText(Path.Join(location, configYaml));
                     config = Yaml.DefaultDeserializer.Deserialize<RawEnunuConfig>(configTxt);
@@ -64,7 +61,6 @@ namespace OpenUtau.Core.Enunu {
                             config.questionPath = f.Substring(f.LastIndexOf("\\")); ;
                         }
                     }
-                    config.enuType = true;
                 }
             }
 
@@ -84,6 +80,9 @@ namespace OpenUtau.Core.Enunu {
         public List<string> wav_synthesizer = new List<string>();
         public List<string> wav_editor = new List<string>();
     }
+    class EnunuStyle {
+        public List<string> styles = new List<string>();
+    }
 
     class RawEnunuExtensions {
         public object ust_editor;
@@ -97,13 +96,17 @@ namespace OpenUtau.Core.Enunu {
         public object wav_editor;
     }
 
+    class RawEnunuStyle {
+        public object styles;
+    }
+
     class RawEnunuConfig {
         public string tablePath;
         public string questionPath;
         public int sampleRate;
         public double framePeriod;
         public RawEnunuExtensions extensions;
-        public bool enuType;
+        public RawEnunuStyle styles;
 
         public EnunuConfig Convert() {
             EnunuConfig enunuConfig = new EnunuConfig();
@@ -112,7 +115,7 @@ namespace OpenUtau.Core.Enunu {
             enunuConfig.sampleRate = this.sampleRate;
             enunuConfig.framePeriod = this.framePeriod;
             enunuConfig.extensions = new EnunuExtensions();
-            enunuConfig.enuType = this.enuType;
+            enunuConfig.styles = new EnunuStyle();
             if (this.extensions != null) {
                 ParseEnunuExtension(enunuConfig.extensions.ust_editor, this.extensions.ust_editor);
                 ParseEnunuExtension(enunuConfig.extensions.ust_converter, this.extensions.ust_converter);
@@ -124,6 +127,9 @@ namespace OpenUtau.Core.Enunu {
                 ParseEnunuExtension(enunuConfig.extensions.wav_synthesizer, this.extensions.wav_synthesizer);
                 ParseEnunuExtension(enunuConfig.extensions.wav_editor, this.extensions.wav_editor);
             }
+            if (this.styles != null) {
+                ParseEnunuStyles(enunuConfig.styles.styles, this.styles.styles);
+            }
             return enunuConfig;
         }
 
@@ -134,6 +140,19 @@ namespace OpenUtau.Core.Enunu {
                 foreach (object o in list) {
                     if (o is string s) {
                         enunuExtension.Add(s);
+                    }
+                }
+            }
+        }
+
+
+        private void ParseEnunuStyles(List<string> enunuStyles, object rawEnunuStyle) {
+            if (rawEnunuStyle is string str) {
+                enunuStyles.Add(str);
+            } else if (rawEnunuStyle is List<object> list) {
+                foreach (object o in list) {
+                    if (o is string s) {
+                        enunuStyles.Add(s);
                     }
                 }
             }

@@ -3,6 +3,7 @@ using System.Linq;
 using OpenUtau.Api;
 using OpenUtau.Core.Render;
 using Serilog;
+using Vortice.Mathematics;
 using YamlDotNet.Serialization;
 
 namespace OpenUtau.Core.Ustx {
@@ -119,11 +120,19 @@ namespace OpenUtau.Core.Ustx {
                 RendererSettings = new URenderSettings();
             }
             RendererSettings.Validate(this);
-            if (project.expressions.TryGetValue(Format.Ustx.CLR, out var descriptor)) {
+            if (project.expressions.TryGetValue(Format.Ustx.CLR, out var descriptorCLR)) {
                 if (VoiceColorExp == null && Singer != null && Singer.Found && Singer.Loaded) {
-                    VoiceColorExp = descriptor.Clone();
+                    VoiceColorExp = descriptorCLR.Clone();
                     var colors = Singer.Subbanks.Select(subbank => subbank.Color).ToHashSet();
                     VoiceColorExp.options = colors.OrderBy(c => c).ToArray();
+                    VoiceColorExp.max = VoiceColorExp.options.Length - 1;
+                }
+            }
+            if (project.expressions.TryGetValue(Format.Ustx.STY, out var descriptorSTY)) {
+                if (VoiceColorExp == null && Singer != null && Singer.Found && Singer.Loaded) {
+                    VoiceColorExp = descriptorSTY.Clone();
+                    var style = Singer.Subbanks.Select(subbank => subbank.Style).ToHashSet();
+                    VoiceColorExp.options = style.OrderBy(c => c).ToArray();
                     VoiceColorExp.max = VoiceColorExp.options.Length - 1;
                 }
             }

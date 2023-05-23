@@ -1,8 +1,12 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using Melanchall.DryWetMidi.Interaction;
+using Melanchall.DryWetMidi.MusicTheory;
 using OpenUtau.Core.Ustx;
+using SharpCompress.Common;
 
 namespace OpenUtau.Core.Enunu {
     public struct EnunuNote {
@@ -15,6 +19,7 @@ namespace OpenUtau.Core.Enunu {
 
     internal static class EnunuUtils {
         static readonly Encoding ShiftJIS = Encoding.GetEncoding("shift_jis");
+        static readonly Encoding UTF8 = Encoding.GetEncoding("utf8");
 
         internal static void WriteUst(IList<EnunuNote> notes, double tempo, USinger singer, string ustPath) {
             using (var writer = new StreamWriter(ustPath, false, ShiftJIS)) {
@@ -35,6 +40,41 @@ namespace OpenUtau.Core.Enunu {
                     }
                 }
                 writer.WriteLine("[#TRACKEND]");
+            }
+        }
+
+        internal static void WriteHed(EnunuConfig config, Dictionary<string, int> enu_singing_style, string hedPath) {
+            List<string> hedContents = new List<string>();
+            int lineCount = 0;
+            List<string> styleNames = config.styles.styles;
+            string[] lines = File.ReadAllLines(config.questionPath);
+            foreach (string styleName in styleNames) {
+                int styleLineCount = 0;
+                foreach (string hedLine in lines) {
+                    if (hedLine.StartsWith($"Q5 \"{styleName}\"")) {
+                        if (enu_singing_style.TryGetValue(styleName, out int styleLevel)) {
+                            if (styleLineCount < styleLevel) {
+                                hedContents.Add($"Q5 \"{styleName}\" {{*]xx/*}}");
+                            } else {
+                                hedContents.Add($"Q5 \"{styleName}\" {{*]{styleName}/*}}");
+                            }
+                            styleLineCount++;
+                        } else {
+                            hedContents.Add(hedLine);
+                        }
+                    } else {
+                        hedContents.Add(hedLine);
+                    }
+                }
+            }
+            if (hedContents.Count != 0) {
+
+                using (var writer = new StreamWriter(hedPath, false, UTF8)) {
+
+                    foreach (string line in hedContents) {
+                        writer.WriteLine(line);
+                    }
+                }
             }
         }
     }

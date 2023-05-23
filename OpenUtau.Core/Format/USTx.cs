@@ -14,6 +14,7 @@ namespace OpenUtau.Core.Format {
         public const string DYN = "dyn";
         public const string PITD = "pitd";
         public const string CLR = "clr";
+        public const string STY = "sty";
         public const string ENG = "eng";
         public const string VEL = "vel";
         public const string VOL = "vol";
@@ -31,12 +32,13 @@ namespace OpenUtau.Core.Format {
         public const string TENC = "tenc";
         public const string VOIC = "voic";
 
-        public static readonly string[] required = { DYN, PITD, CLR, ENG, VEL, VOL, ATK, DEC, };
+        public static readonly string[] required = { DYN, PITD, CLR, STY, ENG, VEL, VOL, ATK, DEC, };
 
         public static void AddDefaultExpressions(UProject project) {
             project.RegisterExpression(new UExpressionDescriptor("dynamics (curve)", DYN, -240, 120, 0) { type = UExpressionType.Curve });
             project.RegisterExpression(new UExpressionDescriptor("pitch deviation (curve)", PITD, -1200, 1200, 0) { type = UExpressionType.Curve });
             project.RegisterExpression(new UExpressionDescriptor("voice color", CLR, false, new string[0]));
+            project.RegisterExpression(new UExpressionDescriptor("singing style", STY, false, new string[0]));
             project.RegisterExpression(new UExpressionDescriptor("resampler engine", ENG, false, new string[] { "", WorldlineResampler.name }));
             project.RegisterExpression(new UExpressionDescriptor("velocity", VEL, 0, 200, 100));
             project.RegisterExpression(new UExpressionDescriptor("volume", VOL, 0, 200, 100));

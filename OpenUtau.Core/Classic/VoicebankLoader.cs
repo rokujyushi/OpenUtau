@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using OpenUtau.Core;
+using OpenUtau.Core.Enunu;
 using OpenUtau.Core.Ustx;
 using Serilog;
 
@@ -84,27 +85,20 @@ namespace OpenUtau.Classic {
             var dir = Path.GetDirectoryName(filePath);
             var yamlFile = Path.Combine(dir, kCharYaml);
             VoicebankConfig bankConfig = null;
-            if (File.Exists(yamlFile)) {
-                try {
-                    using (var stream = File.OpenRead(yamlFile)) {
-                        bankConfig = VoicebankConfig.Load(stream);
-                    }
-                } catch (Exception e) {
-                    Log.Error(e, $"Failed to load yaml {yamlFile}");
-                }
-            }
             var enuconfigFile = Path.Combine(dir, kEnuconfigYaml);
             var simpleEnunuFolder = Path.Combine(dir, kEnunuModelPath);
             if (File.Exists(enuconfigFile)) {
                 voicebank.SingerType = USingerType.Enunu;
             } 
             else if (Directory.Exists(simpleEnunuFolder)) {
-                if (File.Exists(Path.Combine(simpleEnunuFolder, kConfigYaml))) {
+                enuconfigFile = Path.Combine(simpleEnunuFolder, kConfigYaml);
+                if (File.Exists(enuconfigFile)) {
                     voicebank.SingerType = USingerType.Enunu;
                 }
             } 
             else if (Directory.Exists(dir)) {
-                if (File.Exists(Path.Combine(dir, kConfigYaml))) {
+                enuconfigFile = Path.Combine(dir, kConfigYaml);
+                if (File.Exists(enuconfigFile)) {
                     voicebank.SingerType = USingerType.Enunu;
                 }
             } 
@@ -113,14 +107,47 @@ namespace OpenUtau.Classic {
                 voicebank.SingerType = USingerType.Classic;
             }
             Encoding encoding = Encoding.GetEncoding("shift_jis");
-            if (!string.IsNullOrEmpty(bankConfig?.TextFileEncoding)) {
-                encoding = Encoding.GetEncoding(bankConfig.TextFileEncoding);
+            if (File.Exists(yamlFile)) {
+                try {
+                    using (var stream = File.OpenRead(yamlFile)) {
+                        bankConfig = VoicebankConfig.Load(stream);
+                    }
+                } catch (Exception e) {
+                    Log.Error(e, $"Failed to load yaml {yamlFile}");
+                }
+
+                if (!string.IsNullOrEmpty(bankConfig?.TextFileEncoding)) {
+                    encoding = Encoding.GetEncoding(bankConfig.TextFileEncoding);
+                }
+            }
+            Voicebank newVoicebank = new Voicebank();
+            if (bankConfig != null) {
+                ApplyConfig(newVoicebank, bankConfig);
             }
             using (var stream = File.OpenRead(filePath)) {
                 ParseCharacterTxt(voicebank, stream, filePath, basePath, encoding);
             }
+            bool updateConfigFlg = false;
+            /*if (!voicebank.Equals(newVoicebank)) {
+                updateConfigFlg = true;
+            }*/
             if (bankConfig != null) {
                 ApplyConfig(voicebank, bankConfig);
+            }
+            else {
+                updateConfigFlg = true;
+            }
+            if (File.Exists(enuconfigFile)) {
+                try {
+                    var config = EnunuConfig.SetSimpleENUNUConfig(dir).Convert();
+                    if (config.styles != null) {
+                        foreach (var style in config.styles.styles) {
+                            voicebank.Subbanks.Add(new Subbank() { Style = style });
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.Error(e, $"Failed to load yaml {yamlFile}");
+                }
             }
             if (voicebank.Subbanks.Count == 0) {
                 LoadPrefixMap(voicebank);
@@ -129,6 +156,10 @@ namespace OpenUtau.Classic {
                 voicebank.Subbanks.Add(new Subbank() {
                     ToneRanges = new string[0],
                 });
+            }
+            if (updateConfigFlg) {
+                var config = new VoicebankConfig();
+                ParseVoicebank(newVoicebank, config, yamlFile, encoding);
             }
         }
 
@@ -182,6 +213,26 @@ namespace OpenUtau.Classic {
             }
         }
 
+        public static void ParseVoicebank(Voicebank voicebank, VoicebankConfig config, String yamlFile, Encoding encoding) {
+            using (var stream = File.OpenWrite(yamlFile)) {
+                config.Name = voicebank.Name;
+                config.Image = voicebank.Image;
+                config.Portrait = voicebank.Portrait;
+                config.PortraitOpacity = voicebank.PortraitOpacity;
+                config.Author = voicebank.Author;
+                config.Voice = voicebank.Voice;
+                config.Web = voicebank.Web;
+                config.Version = voicebank.Version;
+                config.DefaultPhonemizer = voicebank.DefaultPhonemizer;
+                config.Subbanks = new Subbank[voicebank.Subbanks.Count];
+                for (int i = 0; i<voicebank.Subbanks.Count;i++) {
+                    config.Subbanks[i] = voicebank.Subbanks[i];
+                }
+                config.Save(stream);
+            }
+        }
+
+
         public static void ApplyConfig(Voicebank bank, VoicebankConfig bankConfig) {
             if (!string.IsNullOrWhiteSpace(bankConfig.Name)) {
                 bank.Name = bankConfig.Name;
@@ -213,6 +264,7 @@ namespace OpenUtau.Classic {
                     subbank.Color ??= string.Empty;
                     subbank.Prefix ??= string.Empty;
                     subbank.Suffix ??= string.Empty;
+                    subbank.Style ??= string.Empty;
                 }
                 bank.Subbanks.AddRange(bankConfig.Subbanks);
             }

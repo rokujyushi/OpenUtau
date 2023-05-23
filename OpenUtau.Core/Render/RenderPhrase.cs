@@ -174,6 +174,7 @@ namespace OpenUtau.Core.Render {
         public readonly float[] toneShift;
         public readonly float[] tension;
         public readonly float[] voicing;
+        public readonly Dictionary<string, int> enu_singing_style;
         public readonly Tuple<string, float[]>[] curves;//custom curves defined by renderer
         public readonly ulong preEffectHash;
         public readonly ulong hash;

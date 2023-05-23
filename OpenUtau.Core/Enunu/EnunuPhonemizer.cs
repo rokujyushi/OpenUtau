@@ -41,6 +41,7 @@ namespace OpenUtau.Core.Enunu {
             var enutmpPath = tmpPath + "_enutemp";
             var scorePath = Path.Join(enutmpPath, $"score.lab");
             var timingPath = Path.Join(enutmpPath, $"timing.lab");
+            var hedPath = Path.Join(enutmpPath, $"lab-qst.hed");
             var enunuNotes = NoteGroupsToEnunu(notes);
             double bpm = timeAxis.GetBpmAtTick(notes[0][0].position);
             if (!File.Exists(scorePath) || !File.Exists(timingPath)) {
