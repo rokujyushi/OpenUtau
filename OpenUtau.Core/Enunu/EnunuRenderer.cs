@@ -40,13 +40,13 @@ namespace OpenUtau.Core.Enunu {
             public AcousticResult result;
         }
 
-        struct VocoderResult {
+        struct SyntheResult {
             public string path_wav;
         }
 
-        struct VocoderResponse {
+        struct SyntheResponse {
             public string error;
-            public VocoderResult result;
+            public SyntheResult result;
         }
 
         static readonly object lockObj = new object();
@@ -69,13 +69,13 @@ namespace OpenUtau.Core.Enunu {
             };
         }
 
-        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, CancellationTokenSource cancellation, bool isPreRender) {
+        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender) {
             var task = Task.Run(() => {
                 lock (lockObj) {
                     if (cancellation.IsCancellationRequested) {
                         return new RenderResult();
                     }
-                    string progressInfo = $"{this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
+                    string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
                     var tmpPath = Path.Join(PathManager.Inst.CachePath, $"enu-{phrase.preEffectHash:x16}");
                     var ustPath = tmpPath + ".tmp";
@@ -85,26 +85,16 @@ namespace OpenUtau.Core.Enunu {
                     var result = Layout(phrase);
                     if (!File.Exists(wavPath)) {
                         var config = EnunuConfig.Load(phrase.singer);
-                        if (config.extensions.wav_synthesizer.Contains("vocoder")) {
-                            var f0Path = Path.Join(enutmpPath, "f0.npy");
-                            if (!File.Exists(f0Path)) {
-                                Log.Information($"Starting enunu vocoder synthesis \"{ustPath}\"");
-                                var enunuNotes = PhraseToEnunuNotes(phrase);
-                                // TODO: using first note tempo as ust tempo.
-                                EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
-                                EnunuUtils.WriteHed(config, phrase.enu_singing_style, hedPath);
-                                var response = EnunuClient.Inst.SendRequest<VocoderResponse>(new string[] { "vocoder", ustPath, wavPath });
-                                if (response.error != null) {
-                                    throw new Exception(response.error);
-                                }
+                        if (config.extensions.wav_synthesizer.Contains("synthe")) {
+                            Log.Information($"Starting enunu synthesis \"{ustPath}\"");
+                            var enunuNotes = PhraseToEnunuNotes(phrase);
+                            // TODO: using first note tempo as ust tempo.
+                            EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
+                            EnunuUtils.WriteHed(config, phrase.enu_singing_style, hedPath);
+                            var response = EnunuClient.Inst.SendRequest<SyntheResponse>(new string[] { "synthe", ustPath, wavPath });
+                            if (response.error != null) {
+                                throw new Exception(response.error);
                             }
-                            var f0 = np.Load<double[]>(f0Path);
-                            int totalFrames = f0.Length;
-                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
-                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
-                            int headFrames = (int)Math.Round(headMs / config.framePeriod);
-                            int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
-                            var editorF0 = SampleCurve(phrase, phrase.pitches, 0, config.framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                         } else {
                             var f0Path = Path.Join(enutmpPath, "f0.npy");
                             var spPath = Path.Join(enutmpPath, "spectrogram.npy");
