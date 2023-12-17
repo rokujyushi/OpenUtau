@@ -11,11 +11,13 @@ using OpenUtau.Core.Render;
 using OpenUtau.Core.SignalChain;
 using OpenUtau.Core.Ustx;
 using Serilog;
+using SharpCompress.Writers;
 
 namespace OpenUtau.Core.Enunu {
     public class EnunuRenderer : IRenderer {
         public const int headTicks = 240;
         public const int tailTicks = 240;
+        public const float frameMs = 10;
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
             Format.Ustx.DYN,
@@ -81,17 +83,23 @@ namespace OpenUtau.Core.Enunu {
                     var ustPath = tmpPath + ".tmp";
                     var enutmpPath = tmpPath + "_enutemp";
                     var wavPath = Path.Join(PathManager.Inst.CachePath, $"enu-{phrase.hash:x16}.wav");
-                    var hedPath = Path.Join(PathManager.Inst.CachePath, $"enu-qst.hed");
+                    var hedPath = Path.Join(PathManager.Inst.CachePath, $"enu-{phrase.hash:x16}_qst.hed");
                     var result = Layout(phrase);
                     if (!File.Exists(wavPath)) {
                         var config = EnunuConfig.Load(phrase.singer);
                         if (config.extensions.wav_synthesizer.Contains("synthe")) {
+                            var editorF0Path = Path.Join(enutmpPath, $"enu-{phrase.hash:x16}_f0.npy");
+                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
+                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
+                            int headFrames = (int)Math.Round(headMs / config.framePeriod);
+                            int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
+                            var editorF0 = SampleCurve(phrase, phrase.pitches, 0, config.framePeriod, (int)frameMs, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                            np.Save(editorF0, editorF0Path);
                             Log.Information($"Starting enunu synthesis \"{ustPath}\"");
                             var enunuNotes = PhraseToEnunuNotes(phrase);
                             // TODO: using first note tempo as ust tempo.
                             EnunuUtils.WriteUst(enunuNotes, phrase.phones.First().tempo, phrase.singer, ustPath);
-                            EnunuUtils.WriteHed(config, phrase.enu_singing_style, hedPath);
-                            var response = EnunuClient.Inst.SendRequest<SyntheResponse>(new string[] { "synthe", ustPath, wavPath });
+                            var response = EnunuClient.Inst.SendRequest<SyntheResponse>(new string[] { "synthe", ustPath, editorF0Path, wavPath });
                             if (response.error != null) {
                                 throw new Exception(response.error);
                             }
@@ -216,11 +224,15 @@ namespace OpenUtau.Core.Enunu {
                 noteNum = 60,
             });
             foreach (var phone in phrase.phones) {
+                string timbre = "p9:"+phone.suffix;
+                if (phone.flags.Where(tuple => tuple.Item1 == "EStyle").Select(tuple => tuple.Item1).Equals("EStyle")) {
+                    timbre = timbre + "/p16:" + phone.flags.Where(tuple => tuple.Item1 == "EStyle").Select(tuple => tuple.Item3);
+                }
                 notes.Add(new EnunuNote {
                     lyric = phone.phoneme,
                     length = phone.duration,
                     noteNum = phone.tone,
-                    timbre = phone.suffix,
+                    timbre = timbre,
                 });
             }
             notes.Add(new EnunuNote {

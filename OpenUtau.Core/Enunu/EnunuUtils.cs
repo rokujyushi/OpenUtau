@@ -42,40 +42,5 @@ namespace OpenUtau.Core.Enunu {
                 writer.WriteLine("[#TRACKEND]");
             }
         }
-
-        internal static void WriteHed(EnunuConfig config, Dictionary<string, int> enu_singing_style, string hedPath) {
-            List<string> hedContents = new List<string>();
-            int lineCount = 0;
-            List<string> styleNames = config.styles.styles;
-            string[] lines = File.ReadAllLines(config.questionPath);
-            foreach (string styleName in styleNames) {
-                int styleLineCount = 0;
-                foreach (string hedLine in lines) {
-                    if (hedLine.StartsWith($"Q5 \"{styleName}\"")) {
-                        if (enu_singing_style.TryGetValue(styleName, out int styleLevel)) {
-                            if (styleLineCount < styleLevel) {
-                                hedContents.Add($"Q5 \"{styleName}\" {{*]xx/*}}");
-                            } else {
-                                hedContents.Add($"Q5 \"{styleName}\" {{*]{styleName}/*}}");
-                            }
-                            styleLineCount++;
-                        } else {
-                            hedContents.Add(hedLine);
-                        }
-                    } else {
-                        hedContents.Add(hedLine);
-                    }
-                }
-            }
-            if (hedContents.Count != 0) {
-
-                using (var writer = new StreamWriter(hedPath, false, UTF8)) {
-
-                    foreach (string line in hedContents) {
-                        writer.WriteLine(line);
-                    }
-                }
-            }
-        }
     }
 }
