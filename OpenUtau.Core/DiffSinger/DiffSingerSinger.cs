@@ -27,6 +27,8 @@ namespace OpenUtau.Core.DiffSinger {
         public override byte[] AvatarData => avatarData;
         public override string Portrait => voicebank.Portrait == null ? null : Path.Combine(Location, voicebank.Portrait);
         public override float PortraitOpacity => voicebank.PortraitOpacity;
+        public override int PortraitHeight => voicebank.PortraitHeight;
+        public override string Sample => voicebank.Sample == null ? null : Path.Combine(Location, voicebank.Sample);
         public override string DefaultPhonemizer => voicebank.DefaultPhonemizer;
         public override Encoding TextFileEncoding => voicebank.TextFileEncoding;
         public override IList<USubbank> Subbanks => subbanks;
@@ -53,7 +55,7 @@ namespace OpenUtau.Core.DiffSinger {
             //Load Avatar
             if (Avatar != null && File.Exists(Avatar)) {
                 try {
-                    using (var stream = new FileStream(Avatar, FileMode.Open)) {
+                    using (var stream = new FileStream(Avatar, FileMode.Open, FileAccess.Read)) {
                         using (var memoryStream = new MemoryStream()) {
                             stream.CopyTo(memoryStream);
                             avatarData = memoryStream.ToArray();
@@ -74,12 +76,30 @@ namespace OpenUtau.Core.DiffSinger {
 
             //Load diffsinger config of a voicebank
             string configPath = Path.Combine(Location, "dsconfig.yaml");
-            dsConfig = Core.Yaml.DefaultDeserializer.Deserialize<DsConfig>(
-                File.ReadAllText(configPath, TextFileEncoding));
+            if(configPath != null && File.Exists(configPath)){
+                try {
+                    dsConfig = Core.Yaml.DefaultDeserializer.Deserialize<DsConfig>(
+                        File.ReadAllText(configPath, Encoding.UTF8));
+                } catch (Exception e) {
+                    Log.Error(e, $"Failed to load dsconfig.yaml for {Name} from {configPath}");
+                    dsConfig = new DsConfig();
+                }
+            } else {
+                Log.Error($"dsconfig.yaml not found for {Name} at {configPath}");
+                dsConfig = new DsConfig();
+            }
 
             //Load phoneme list
             string phonemesPath = Path.Combine(Location, dsConfig.phonemes);
-            phonemes = File.ReadLines(phonemesPath,TextFileEncoding).ToList();
+            if(phonemesPath != null && File.Exists(phonemesPath)){
+                try {
+                    phonemes = File.ReadLines(phonemesPath, TextFileEncoding).ToList();
+                } catch (Exception e){
+                    Log.Error(e, $"Failed to load phoneme list for {Name} from {phonemesPath}");
+                }
+            } else {
+                Log.Error($"phonemes file not found for {Name} at {phonemesPath}");
+            }
 
             var dummyOtoSet = new UOtoSet(new OtoSet(), Location);
             foreach (var phone in phonemes) {
@@ -167,6 +187,34 @@ namespace OpenUtau.Core.DiffSinger {
                 variancePredictor = new DsVariance(Location);
             }
             return variancePredictor;
+        }
+
+        public override void FreeMemory(){
+            Log.Information($"Freeing memory for singer {Id}");
+            if(acousticSession != null) {
+                lock(acousticSession) {
+                    acousticSession?.Dispose();
+                }
+                acousticSession = null;
+            }
+            if(vocoder != null) {
+                lock(vocoder) {
+                    vocoder?.Dispose();
+                }
+                vocoder = null;
+            }
+            if(pitchPredictor != null) {
+                lock(pitchPredictor) {
+                    pitchPredictor?.Dispose();
+                }
+                pitchPredictor = null;
+            }
+            if(variancePredictor != null){
+                lock(variancePredictor) {
+                    variancePredictor?.Dispose();
+                }
+                variancePredictor = null;
+            }
         }
     }
 }
