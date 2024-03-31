@@ -11,18 +11,18 @@ using OpenUtau.Core.Render;
 using OpenUtau.Core.SignalChain;
 using OpenUtau.Core.Ustx;
 using Serilog;
-using SharpCompress.Writers;
 
 namespace OpenUtau.Core.Enunu {
     public class EnunuRenderer : IRenderer {
         public const int headTicks = 240;
         public const int tailTicks = 240;
         public const float frameMs = 10;
+        public const string STY = "sty";
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
             Format.Ustx.DYN,
             Format.Ustx.CLR,
-            Format.Ustx.STY,
+            STY,
             Format.Ustx.PITD,
             Format.Ustx.GENC,
             Format.Ustx.BREC,
@@ -223,10 +223,14 @@ namespace OpenUtau.Core.Enunu {
                 length = headTicks,
                 noteNum = 60,
             });
+            string timbre = string.Empty;
             foreach (var phone in phrase.phones) {
-                string timbre = "p9:"+phone.suffix;
-                if (phone.flags.Where(tuple => tuple.Item1 == "EStyle").Select(tuple => tuple.Item1).Equals("EStyle")) {
-                    timbre = timbre + "/p16:" + phone.flags.Where(tuple => tuple.Item1 == "EStyle").Select(tuple => tuple.Item3);
+                if (!string.IsNullOrEmpty(phone.suffix)) {
+                    timbre = "p9:" + phone.suffix + "/";
+                }
+                var Items = phone.flags.Where(flag => flag.Item3 == STY).First();
+                if (Items.Item3.Equals(STY)) {
+                    timbre = timbre + "p16:" + Items.Item3;
                 }
                 notes.Add(new EnunuNote {
                     lyric = phone.phoneme,
@@ -244,7 +248,18 @@ namespace OpenUtau.Core.Enunu {
         }
 
         public UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings) {
-            return new UExpressionDescriptor[] { };
+            EnunuSinger? Ensinger = singer as EnunuSinger;
+            var enuconfig = EnunuConfig.Load(Ensinger);
+            var result = new List<UExpressionDescriptor> {
+                new UExpressionDescriptor{
+                    name="style",
+                    abbr=STY,
+                    options=enuconfig.styles.styles.ToArray(),
+                    isFlag=false,
+                },
+            };
+
+            return result.ToArray();
         }
 
         public override string ToString() => Renderers.ENUNU;
