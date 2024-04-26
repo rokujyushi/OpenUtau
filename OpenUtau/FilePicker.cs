@@ -52,6 +52,9 @@ namespace OpenUtau.App {
         public static FilePickerFileType OUDEP { get; } = new("OpenUtau dependency") {
             Patterns = new[] { "*.oudep" },
         };
+        public static FilePickerFileType BAT { get; } = new("BAT") {
+            Patterns = new[] { "*.bat" },
+        };
 
         public async static Task<string?> OpenFile(
             Window window, string titleKey, params FilePickerFileType[] types) {

@@ -11,10 +11,12 @@ namespace OpenUtau.Core.Ustx {
         public string renderer;
         public string resampler;
         public string wavtool;
+        public string renderer_mode;
 
         [YamlIgnore] public IRenderer Renderer { get; set; }
         [YamlIgnore] public Classic.IResampler Resampler { get; set; }
         [YamlIgnore] public Classic.IWavtool Wavtool { get; set; }
+        [YamlIgnore] public string Renderer_mode { get; set; }
 
         public void Validate(UTrack track) {
             if (track.Singer == null || !track.Singer.Found) {
@@ -24,6 +26,8 @@ namespace OpenUtau.Core.Ustx {
                 Resampler = null;
                 wavtool = null;
                 Wavtool = null;
+                renderer_mode = null;
+                Renderer_mode = null;
                 return;
             }
             if (string.IsNullOrEmpty(renderer)) {
@@ -51,6 +55,16 @@ namespace OpenUtau.Core.Ustx {
                     Wavtool = Classic.ToolsManager.Inst.GetWavtool(wavtool);
                     wavtool = Wavtool.ToString();
                 }
+            } else if (renderer == Renderers.ENUNU) {
+                if (string.IsNullOrEmpty(renderer_mode)) {
+                    if (!Util.Preferences.Default.EnunuSyntheMode.Equals(renderer_mode)) {
+                        renderer_mode = null;
+                    }
+                }
+                if (string.IsNullOrEmpty(renderer_mode) || renderer_mode.Equals(Renderer_mode)) {
+                    Renderer_mode = Util.Preferences.Default.EnunuSyntheModes.Where(o => o.Equals(renderer_mode)).First();
+                    renderer_mode = Renderer_mode;
+                }
             } else {
                 wavtool = null;
                 Wavtool = null;
@@ -62,6 +76,7 @@ namespace OpenUtau.Core.Ustx {
                 renderer = renderer,
                 resampler = resampler,
                 wavtool = wavtool,
+                renderer_mode = renderer_mode,
             };
         }
     }

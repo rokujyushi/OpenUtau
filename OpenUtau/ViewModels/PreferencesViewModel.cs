@@ -8,10 +8,10 @@ using System.Text.RegularExpressions;
 using OpenUtau.Audio;
 using OpenUtau.Classic;
 using OpenUtau.Core;
+using OpenUtau.Core.Render;
 using OpenUtau.Core.Util;
 using ReactiveUI;
 using ReactiveUI.Fody.Helpers;
-using OpenUtau.Core.Render;
 
 namespace OpenUtau.App.ViewModels {
     public class PreferencesViewModel : ViewModelBase {
@@ -43,6 +43,12 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public int DiffSingerDepth { get; set; }
         [Reactive] public int DiffsingerSpeedup { get; set; }
         [Reactive] public bool SkipRenderingMutedTracks { get; set; }
+        public string EnunuPath => Preferences.Default.EnunuPath;
+        public List<string> EnunuSyntheModes { get; } = new List<string> { "acoustic", "synthe" };
+        [Reactive] public string EnunuSyntheMode { get; set; }
+        [Reactive] public string EnunuAddress { get; set; }
+        public string VoicevoxPath => Preferences.Default.VoicevoxPath;
+        [Reactive] public string VoicevoxAddress { get; set; }
         [Reactive] public bool HighThreads { get; set; }
         [Reactive] public int Theme { get; set; }
         [Reactive] public bool PenPlusDefault { get; set; }
@@ -142,6 +148,9 @@ namespace OpenUtau.App.ViewModels {
             DiffSingerDepth = Preferences.Default.DiffSingerDepth;
             DiffsingerSpeedup = Preferences.Default.DiffsingerSpeedup;
             SkipRenderingMutedTracks = Preferences.Default.SkipRenderingMutedTracks;
+            EnunuSyntheMode = Preferences.Default.EnunuSyntheMode;
+            EnunuAddress = Preferences.Default.EnunuAddress;
+            VoicevoxAddress = Preferences.Default.VoicevoxAddress;
             Theme = Preferences.Default.Theme;
             PenPlusDefault = Preferences.Default.PenPlusDefault;
             DegreeStyle = Preferences.Default.DegreeStyle;
@@ -340,6 +349,21 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Default.SkipRenderingMutedTracks = skipRenderingMutedTracks;
                     Preferences.Save();
                 });
+            this.WhenAnyValue(vm => vm.EnunuSyntheMode)
+                .Subscribe(enunuSyntheMode => {
+                    Preferences.Default.EnunuSyntheMode = enunuSyntheMode;
+                    Preferences.Save();
+                });
+            this.WhenAnyValue(vm => vm.EnunuAddress)
+                .Subscribe(enunuAddress => {
+                    Preferences.Default.EnunuAddress = enunuAddress;
+                    Preferences.Save();
+                });
+            this.WhenAnyValue(vm => vm.VoicevoxAddress)
+                .Subscribe(voicevoxAddress => {
+                    Preferences.Default.VoicevoxAddress = voicevoxAddress;
+                    Preferences.Save();
+                });
         }
 
         public void TestAudioOutputDevice() {
@@ -360,6 +384,18 @@ namespace OpenUtau.App.ViewModels {
             Preferences.Default.AdditionalSingerPath = path;
             Preferences.Save();
             this.RaisePropertyChanged(nameof(AdditionalSingersPath));
+        }
+
+        public void SetEnunuPath(string path) {
+            Preferences.Default.EnunuPath = path;
+            Preferences.Save();
+            this.RaisePropertyChanged(nameof(EnunuPath));
+        }
+
+        public void SetVoicevoxPath(string path) {
+            Preferences.Default.VoicevoxPath = path;
+            Preferences.Save();
+            this.RaisePropertyChanged(nameof(VoicevoxPath));
         }
 
         public void SetVLabelerPath(string path) {

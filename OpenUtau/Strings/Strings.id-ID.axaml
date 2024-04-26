@@ -367,6 +367,11 @@ Peringatan: opsi ini menghapus prasetel khusus.</system:String>
   <system:String x:Key="prefs.rendering.defaultrenderer">Perender bawaan (untuk voicebank klasik)</system:String>
   <system:String x:Key="prefs.rendering.diffsingerdepth">Kedalaman Render DiffSinger</system:String>
   <system:String x:Key="prefs.rendering.diffsingerspeedup">Kecepatan Render DiffSinger</system:String>
+  <!--<system:String x:Key="prefs.rendering.enunupath">ENUNU Server Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunusynthemode">ENUNU Server Synthe Mode</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunuaddress">ENUNU Server Address</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxpath">VOICEVOX Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxaddress">VOICEVOX Address</system:String>-->
   <!--<system:String x:Key="prefs.rendering.onnxgpu">GPU</system:String>-->
   <system:String x:Key="prefs.rendering.onnxrunner">Penjalan Pembelajaran Mesin</system:String>
   <system:String x:Key="prefs.rendering.phasecomp">Kompensasi Fase</system:String>

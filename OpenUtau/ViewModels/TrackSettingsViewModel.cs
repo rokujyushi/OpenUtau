@@ -18,12 +18,16 @@ namespace OpenUtau.App.ViewModels {
         public ObservableCollectionExtended<IWavtool> Wavtools => wavtools;
         [Reactive] public IWavtool? Wavtool { get; set; }
         [Reactive] public bool NeedsWavtool { get; set; }
+        public ObservableCollectionExtended<String> Renderer_mode => renderer_mode;
         [Reactive] public bool IsNotClassic { get; set; }
+        [Reactive] public bool IsEnunu { get; set; }
 
         ObservableCollectionExtended<IResampler> resamplers =
             new ObservableCollectionExtended<IResampler>();
         ObservableCollectionExtended<IWavtool> wavtools =
             new ObservableCollectionExtended<IWavtool>();
+        ObservableCollectionExtended<String> renderer_mode =
+            new ObservableCollectionExtended<String>();
 
         public TrackSettingsViewModel(UTrack track) {
             ToolsManager.Inst.Initialize();
@@ -45,10 +49,18 @@ namespace OpenUtau.App.ViewModels {
                         wavtoolName = string.Empty;
                     }
                 }
+                renderer_mode.AddRange(Preferences.Default.EnunuSyntheModes);
+                string? modeName = Track.RendererSettings.wavtool;
+                if (string.IsNullOrEmpty(modeName)) {
+                    if (!Preferences.Default.EnunuSyntheModes.Contains(modeName)) {
+                        modeName = string.Empty;
+                    }
+                }
                 Wavtool = ToolsManager.Inst.GetWavtool(wavtoolName);
                 NeedsResampler = Renderers.CLASSIC == renderer;
                 NeedsWavtool = Renderers.CLASSIC == renderer;
                 IsNotClassic = Renderers.CLASSIC != renderer;
+                IsEnunu = Renderers.ENUNU == renderer;
             }
             this.WhenAnyValue(x => x.Resampler)
                 .Subscribe(resampler => {

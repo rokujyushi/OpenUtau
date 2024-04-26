@@ -144,6 +144,12 @@ namespace OpenUtau.Core.Util {
             public int OnnxGpu = 0;
             public int DiffsingerSpeedup = 50;
             public int DiffSingerDepth = 1000;
+            public string EnunuPath = string.Empty;
+            public List<string> EnunuSyntheModes { get; } = new List<string>();
+            public string EnunuSyntheMode = string.Empty;
+            public string EnunuAddress = string.Empty;
+            public string VoicevoxPath = string.Empty;
+            public string VoicevoxAddress = string.Empty;
             public bool SkipRenderingMutedTracks = false;
             public string Language = string.Empty;
             public string? SortingOrder = null;

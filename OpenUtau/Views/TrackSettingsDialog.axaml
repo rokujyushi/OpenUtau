@@ -30,6 +30,16 @@
         <Button Grid.Column="2" Content="{DynamicResource dialogs.tracksettings.setasdefault}"
                 HorizontalAlignment="Stretch" Command="{Binding SetDefaultWavtool}"/>
       </Grid>
+      <TextBlock Text="{DynamicResource prefs.rendering.enunupath}" IsVisible="{Binding NeedsWavtool}"/>
+      <ComboBox Grid.Column="1" HorizontalAlignment="Stretch" IsVisible="{Binding NeedsWavtool}"
+                ItemsSource="{Binding Wavtools}"
+                SelectedItem="{Binding Wavtool}"/>
+      <Grid ColumnDefinitions="*,8,*" IsVisible="{Binding NeedsWavtool}">
+        <Button Grid.Column="0" Content="{DynamicResource dialogs.tracksettings.location}"
+                HorizontalAlignment="Stretch" Command="{Binding OpenWavtoolLocation}"/>
+        <Button Grid.Column="2" Content="{DynamicResource dialogs.tracksettings.setasdefault}"
+                HorizontalAlignment="Stretch" Command="{Binding SetDefaultWavtool}"/>
+      </Grid>
       <Button Grid.Column="2" Content="{DynamicResource dialogs.messagebox.ok}"
               HorizontalAlignment="Stretch" Click="OnOkClicked"/>
     </StackPanel>

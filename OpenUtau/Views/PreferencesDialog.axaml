@@ -144,6 +144,22 @@
                 <Slider Grid.Column="4" Classes="fader" Value="{Binding DiffSingerDepth}" Minimum="0" Maximum="1000"
                         TickPlacement="BottomRight" TickFrequency="20" IsSnapToTickEnabled="true"/>
             </Grid>
+            <TextBlock Text="{DynamicResource prefs.rendering.enunupath}" Margin="0,10,0,0"/>
+            <TextBlock HorizontalAlignment="Stretch" Margin="4"
+                       TextWrapping="Wrap" FontSize="11" Text="{Binding EnunuPath}"/>
+            <Button Content="{DynamicResource prefs.paths.select}"
+                    HorizontalAlignment="Stretch" Click="SelectEnunuPath"/>
+            <TextBlock Text="{DynamicResource prefs.rendering.enunusynthemode}" Margin="0,10,0,0"/>
+            <ComboBox HorizontalAlignment="Stretch"  ItemsSource="{Binding EnunuSyntheModes}" SelectedItem="{Binding EnunuSyntheMode}"/>
+            <TextBlock Text="{DynamicResource prefs.rendering.enunuaddress}" Margin="0,10,0,0"/>
+            <TextBox Text="" Watermark="127.0.0.1:15555" HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
+            <TextBlock Text="{DynamicResource prefs.rendering.voicevoxpath}" Margin="0,10,0,0"/>
+            <TextBlock HorizontalAlignment="Stretch" Margin="4"
+                       TextWrapping="Wrap" FontSize="11" Text="{Binding VoicevoxPath}"/>
+            <Button Content="{DynamicResource prefs.paths.select}"
+                    HorizontalAlignment="Stretch" Click="SelectVoicevoxPath"/>
+            <TextBlock Text="{DynamicResource prefs.rendering.voicevoxaddress}" Margin="0,10,0,0"/>
+            <TextBox Text="" Watermark="127.0.0.1:50021" HorizontalAlignment="Stretch" Margin="0,10,0,0"/>
             <Grid>
               <TextBlock Text="{DynamicResource prefs.rendering.skipmuted}" HorizontalAlignment="Left"/>
               <ToggleSwitch IsChecked="{Binding SkipRenderingMutedTracks}"/>
