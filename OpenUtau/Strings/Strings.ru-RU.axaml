@@ -361,6 +361,11 @@
   <system:String x:Key="prefs.rendering.defaultrenderer">Рендерер по-умолчанию (для классических войсбанков)</system:String>
   <system:String x:Key="prefs.rendering.diffsingerdepth">Глубина рендеринга DiffSinger</system:String>
   <system:String x:Key="prefs.rendering.diffsingerspeedup">Ускорение рендеринга DiffSinger</system:String>
+  <!--<system:String x:Key="prefs.rendering.enunupath">ENUNU Server Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunusynthemode">ENUNU Server Synthe Mode</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunuaddress">ENUNU Server Address</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxpath">VOICEVOX Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxaddress">VOICEVOX Address</system:String>-->
   <system:String x:Key="prefs.rendering.onnxgpu">Графический процессор</system:String>
   <!--<system:String x:Key="prefs.rendering.onnxrunner">Machine Learning Runner</system:String>-->
   <system:String x:Key="prefs.rendering.phasecomp">Фазовая компенсация</system:String>

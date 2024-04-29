@@ -361,6 +361,11 @@
   <system:String x:Key="prefs.rendering.defaultrenderer">传统音源的默认渲染器</system:String>
   <system:String x:Key="prefs.rendering.diffsingerdepth">DiffSinger 渲染深度</system:String>
   <system:String x:Key="prefs.rendering.diffsingerspeedup">DiffSinger 渲染加速</system:String>
+  <!--<system:String x:Key="prefs.rendering.enunupath">ENUNU Server Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunusynthemode">ENUNU Server Synthe Mode</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.enunuaddress">ENUNU Server Address</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxpath">VOICEVOX Path</system:String>-->
+  <!--<system:String x:Key="prefs.rendering.voicevoxaddress">VOICEVOX Address</system:String>-->
   <!--<system:String x:Key="prefs.rendering.onnxgpu">GPU</system:String>-->
   <system:String x:Key="prefs.rendering.onnxrunner">机器学习运行器</system:String>
   <system:String x:Key="prefs.rendering.phasecomp">相位修正</system:String>
