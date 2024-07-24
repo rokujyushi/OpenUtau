@@ -81,10 +81,7 @@ namespace OpenUtau.Core.Voicevox {
             table.Clear();
             otos.Clear();
             try {
-                var parentDirectory = Directory.GetParent(this.Location).ToString();
-                var yamlPath = Path.Join(parentDirectory, "phonemes.yaml");
-                var yamlTxt = File.ReadAllText(yamlPath);
-                var phonemes_list = Yaml.DefaultDeserializer.Deserialize<Phoneme_list>(yamlTxt);
+                var phonemes_list = new Phoneme_list();
                 //Prepared for planned changes or additions to phonemizers.
                 foreach (var str in phonemes_list.vowels) {
                    phonemes.Add(str);
@@ -92,8 +89,8 @@ namespace OpenUtau.Core.Voicevox {
                 foreach (var str in phonemes_list.consonants) {
                     phonemes.Add(str);
                 }
-                foreach (var str in phonemes_list.kana) {
-                    phonemes.Add(str);
+                foreach (var str in phonemes_list.kanas) {
+                    phonemes.Add(str.Key);
                 }
             } catch (Exception e) {
                 Log.Error(e, $"Failed to load phonemes.yaml for {Name}");
