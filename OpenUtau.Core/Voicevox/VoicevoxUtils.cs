@@ -53,6 +53,7 @@ namespace OpenUtau.Core.Voicevox {
             kanas_.Add("え け げ せ ぜ て で ね へ べ ぺ め れ ゑ うぇ ヴぇ きぇ ぎぇ しぇ じぇ ちぇ つぇ にぇ ひぇ びぇ ぴぇ ふぇ みぇ りぇ ぇ エ ケ ゲ セ ゼ テ デ ネ ヘ ベ ペ メ レ ヱ ウェ ヴェ キェ ギェ シェ ジェ チェ ツェ ニェ ヒェ ビェ ピェ フェ ミェ リェ ェ e".Split().ToList());
             kanas_.Add("お こ ご そ ぞ と ど の ほ ぼ ぽ も よ ろ を うぉ ヴぉ きょ ぎょ しょ じょ ちょ つぉ てょ でょ にょ ひょ びょ ぴょ ふぉ みょ りょ ぉ ょ オ コ ゴ ソ ゾ ト ド ノ ホ ボ ポ モ ヨ ロ ヲ ウォ ヴォ キョ ギョ ショ ジョ チョ ツォ テョ デョ ニョ ヒョ ビョ ピョ フォ ミョ リョ ォ ョ o".Split().ToList());
             kanas_.Add("ん ン n ng".Split().ToList());
+            kanas_.Add("っ ッ cl q".Split().ToList());
             for (int i = 0; i < kanas_.Count; i++) {
                 for (int a = 0; a < kanas_[i].Count; a++) {
                     if (!kanas.ContainsKey(kanas_[i][a])) {
