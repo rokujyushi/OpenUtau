@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using OpenUtau.App.ViewModels;
@@ -33,6 +34,28 @@ namespace OpenUtau.App.Views {
             });
             DocManager.Inst.ExecuteCmd(new SingersRefreshedNotification());
             MessageBox.CloseLoading();
+        }
+
+        async void SelectEnunuPath(object sender, RoutedEventArgs e) {
+            var type = OS.IsWindows() ? FilePicker.BAT : OS.IsMacOS() ? FilePicker.APP : FilePickerFileTypes.All;
+            var path = await FilePicker.OpenFile(this, "prefs.rendering.enunupath", type);
+            if (string.IsNullOrEmpty(path)) {
+                return;
+            }
+            if (OS.AppExists(path)) {
+                ((PreferencesViewModel)DataContext!).SetEnunuPath(path);
+            }
+        }
+
+        async void SelectVoicevoxPath(object sender, RoutedEventArgs e) {
+            var type = OS.IsWindows() ? FilePicker.EXE : OS.IsMacOS() ? FilePicker.APP : FilePickerFileTypes.All;
+            var path = await FilePicker.OpenFile(this, "prefs.rendering.voicevoxpath", type);
+            if (string.IsNullOrEmpty(path)) {
+                return;
+            }
+            if (OS.AppExists(path)) {
+                ((PreferencesViewModel)DataContext!).SetVoicevoxPath(path);
+            }
         }
 
         void ResetVLabelerPath(object sender, RoutedEventArgs e) {
