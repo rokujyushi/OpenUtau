@@ -3,12 +3,24 @@ using System.Collections.Generic;
 using System.Linq;
 using OpenUtau.Api;
 using OpenUtau.Core.G2p;
-using WanaKanaNet;
+using OpenUtau.Core.Ustx;
 using OpenUtau.Plugin.Builtin;
+using WanaKanaNet;
 
 namespace OpenUtau.Core.Voicevox {
-    [Phonemizer("Simple Voicevox ENtoJA Phonemizer", "S-VOICEVOX EN to JA", "TUBS", language: "EN")]
+    [Phonemizer("Simple Voicevox ENtoJA Phonemizer", "S-VOICEVOX EN to JA", "TUBS & ROKU10SHI", language: "EN")]
     public class SimpleVoicevoxENtoJAPhonemizer : SyllableBasedPhonemizer {
+
+        protected VoicevoxSinger singer;
+
+        public override void SetSinger(USinger singer) {
+            base.SetSinger(singer);
+            this.singer = singer as VoicevoxSinger;
+            if (this.singer != null) {
+                this.singer.voicevoxConfig.Tag = this.Tag;
+                VoicevoxUtils.Loaddic(this.singer);
+            }
+        }
         protected override string[] GetVowels() => vowels;
         private static readonly string[] vowels =
             "a i u e o ay ey oy ow aw".Split();
@@ -207,17 +219,21 @@ namespace OpenUtau.Core.Voicevox {
         private string[] affricates = "ts ch j".Split();
 
         protected override string[] GetSymbols(Note note) {
-            string[] original = base.GetSymbols(note);
-            if (original == null) {
-                return null;
-            }
             List<string> modified = new List<string>();
-            string[] diphthongs = new[] { "ay", "ey", "oy", "ow", "aw" };
-            foreach (string s in original) {
-                if (diphthongs.Contains(s)) {
-                    modified.AddRange(new string[] { s[0].ToString(), s[1].ToString() });
-                } else {
-                    modified.Add(s);
+            if (VoicevoxUtils.phoneme_List.paus.TryGetValue(note.lyric,out string str)) {
+                modified.Add(str);
+            } else {
+                string[] original = base.GetSymbols(note);
+                if (original == null) {
+                    return null;
+                }
+                string[] diphthongs = new[] { "ay", "ey", "oy", "ow", "aw" };
+                foreach (string s in original) {
+                    if (diphthongs.Contains(s)) {
+                        modified.AddRange(new string[] { s[0].ToString(), s[1].ToString() });
+                    } else {
+                        modified.Add(s);
+                    }
                 }
             }
             return modified.ToArray();
@@ -232,9 +248,13 @@ namespace OpenUtau.Core.Voicevox {
             var cc = syllable.cc;
             var v = syllable.v;
             var phonemes = new List<string>();
+            if (VoicevoxUtils.phoneme_List.paus.TryGetValue(v, out string str)) {
+                phonemes.Add(str);
+                return phonemes;
+            }
 
-            // Check CCs for special clusters
-            var adjustedCC = new List<string>();
+                // Check CCs for special clusters
+                var adjustedCC = new List<string>();
             for (var i = 0; i < cc.Length; i++) {
                 if (i == cc.Length - 1) {
                     adjustedCC.Add(cc[i]);
