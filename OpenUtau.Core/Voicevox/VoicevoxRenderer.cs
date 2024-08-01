@@ -78,7 +78,7 @@ namespace OpenUtau.Core.Voicevox {
                                             lyric = phrase.phones[i].phoneme,
                                             position = phrase.phones[i].position,
                                             duration = phrase.phones[i].duration,
-                                            tone = (int)(phrase.phones[i].tone + phrase.phones[0].toneShift)
+                                            tone = phrase.phones[i].tone + phrase.phones[0].toneShift//phrase.phones[phrase.phones[0].direct ? 0:i].toneShift
                                         };
                                     }
 
@@ -240,7 +240,7 @@ namespace OpenUtau.Core.Voicevox {
                     abbr=VOLC,
                     type=UExpressionType.Curve,
                     min=0,
-                    max=300,
+                    max=200,
                     defaultValue=100,
                     isFlag=false,
                 },
@@ -293,7 +293,12 @@ namespace OpenUtau.Core.Voicevox {
                 using (var writer = new BinaryWriter(stream)) {
                     writer.Write(phrase.preEffectHash);
                     writer.Write(phrase.phones[0].tone);
-                    writer.Write(phrase.phones[0].toneShift);
+                    writer.Write(phrase.phones[0].direct);
+                    //if (phrase.phones[0].direct) {
+                        writer.Write(phrase.phones[0].toneShift);
+                    //} else {
+                    //    phrase.phones.ForEach(x => writer.Write(x.toneShift));
+                    //}
                     writer.Write(phrase.phones[0].volume);
                     return XXH64.DigestOf(stream.ToArray());
                 }
