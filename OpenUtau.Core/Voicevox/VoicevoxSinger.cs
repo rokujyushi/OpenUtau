@@ -92,6 +92,9 @@ namespace OpenUtau.Core.Voicevox {
                 foreach (var str in phonemes_list.kanas) {
                     phonemes.Add(str.Key);
                 }
+                foreach (var str in phonemes_list.paus) {
+                    phonemes.Add(str.Key);
+                }
             } catch (Exception e) {
                 Log.Error(e, $"Failed to load phonemes.yaml for {Name}");
             }

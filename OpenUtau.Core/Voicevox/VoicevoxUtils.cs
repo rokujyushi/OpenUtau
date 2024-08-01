@@ -45,19 +45,33 @@ namespace OpenUtau.Core.Voicevox {
         public string[] vowels = "a i u e o A I U E O N pau cl".Split();
         public string[] consonants = "k s sh t ts ch n h f my r w z j d b p w v ky ny hy my ry gy by py ty dy".Split();
         public Dictionary<string, string> kanas = new Dictionary<string, string>();
+        public Dictionary<string, string> paus = new Dictionary<string, string>();
         public Phoneme_list() {
-            List<List<string>> kanas_ = new List<List<string>>();
-            kanas_.Add("あ か が さ ざ た だ な は ば ぱ ま や ら わ きゃ ぎゃ しゃ じゃ ちゃ てゃ でゃ にゃ ひゃ びゃ ぴゃ ふぁ みゃ りゃ ぁ ゃ ア カ ガ サ ザ タ ダ ナ ハ バ パ マ ヤ ラ ワ キャ ギャ シャ ジャ チャ テャ デャ ニャ ヒャ ビャ ピャ ファ ミャ リャ ァ ャ a".Split().ToList());
-            kanas_.Add("い き ぎ し じ ち ぢ に ひ び ぴ み り ゐ いぇ ヴぁ うぃ ヴぃ すぃ ずぃ つぃ てぃ でぃ ふぃ ぃ イ キ ギ シ ジ チ ヂ ニ ヒ ビ ピ ミ リ ヰ イェ ヴァ ウィ ヴィ スィ ズィ ツィ ティ ディ フィ ィ i".Split().ToList());
-            kanas_.Add("う く ぐ す ず つ づ ぬ ふ ぶ ぷ む ゆ る きゅ ぎゅ しゅ じゅ ちゅ てゅ でゅ とぅ どぅ にゅ ひゅ びゅ ぴゅ みゅ りゅ ぅ ゅ ウ ク グ ス ズ ツ ヅ ヌ フ ブ プ ム ユ ル ヴ キュ ギュ シュ ジュ チュ テュ デュ トゥ ドゥ ニュ ヒュ ビュ ピュ ミュ リュ ゥ ュ u".Split().ToList());
-            kanas_.Add("え け げ せ ぜ て で ね へ べ ぺ め れ ゑ うぇ ヴぇ きぇ ぎぇ しぇ じぇ ちぇ つぇ にぇ ひぇ びぇ ぴぇ ふぇ みぇ りぇ ぇ エ ケ ゲ セ ゼ テ デ ネ ヘ ベ ペ メ レ ヱ ウェ ヴェ キェ ギェ シェ ジェ チェ ツェ ニェ ヒェ ビェ ピェ フェ ミェ リェ ェ e".Split().ToList());
-            kanas_.Add("お こ ご そ ぞ と ど の ほ ぼ ぽ も よ ろ を うぉ ヴぉ きょ ぎょ しょ じょ ちょ つぉ てょ でょ にょ ひょ びょ ぴょ ふぉ みょ りょ ぉ ょ オ コ ゴ ソ ゾ ト ド ノ ホ ボ ポ モ ヨ ロ ヲ ウォ ヴォ キョ ギョ ショ ジョ チョ ツォ テョ デョ ニョ ヒョ ビョ ピョ フォ ミョ リョ ォ ョ o".Split().ToList());
-            kanas_.Add("ん ン n ng".Split().ToList());
-            kanas_.Add("っ ッ cl q".Split().ToList());
-            for (int i = 0; i < kanas_.Count; i++) {
-                for (int a = 0; a < kanas_[i].Count; a++) {
-                    if (!kanas.ContainsKey(kanas_[i][a])) {
-                        kanas.Add(kanas_[i][a], kanas_[i][0]);
+            var kanaGroups = new List<string[]> {
+                "あ か が さ ざ た だ な は ば ぱ ま や ら わ きゃ ぎゃ しゃ じゃ ちゃ てゃ でゃ にゃ ひゃ びゃ ぴゃ ふぁ みゃ りゃ ぁ ゃ ア カ ガ サ ザ タ ダ ナ ハ バ パ マ ヤ ラ ワ キャ ギャ シャ ジャ チャ テャ デャ ニャ ヒャ ビャ ピャ ファ ミャ リャ ァ ャ a".Split(),
+                "い き ぎ し じ ち ぢ に ひ び ぴ み り ゐ いぇ ヴぁ うぃ ヴぃ すぃ ずぃ つぃ てぃ でぃ ふぃ ぃ イ キ ギ シ ジ チ ヂ ニ ヒ ビ ピ ミ リ ヰ イェ ヴァ ウィ ヴィ スィ ズィ ツィ ティ ディ フィ ィ i".Split(),
+                "う く ぐ す ず つ づ ぬ ふ ぶ ぷ む ゆ る きゅ ぎゅ しゅ じゅ ちゅ てゅ でゅ とぅ どぅ にゅ ひゅ びゅ ぴゅ みゅ りゅ ぅ ゅ ウ ク グ ス ズ ツ ヅ ヌ フ ブ プ ム ユ ル ヴ キュ ギュ シュ ジュ チュ テュ デュ トゥ ドゥ ニュ ヒュ ビュ ピュ ミュ リュ ゥ ュ u".Split(),
+                "え け げ せ ぜ て で ね へ べ ぺ め れ ゑ うぇ ヴぇ きぇ ぎぇ しぇ じぇ ちぇ つぇ にぇ ひぇ びぇ ぴぇ ふぇ みぇ りぇ ぇ エ ケ ゲ セ ゼ テ デ ネ ヘ ベ ペ メ レ ヱ ウェ ヴェ キェ ギェ シェ ジェ チェ ツェ ニェ ヒェ ビェ ピェ フェ ミェ リェ ェ e".Split(),
+                "お こ ご そ ぞ と ど の ほ ぼ ぽ も よ ろ を うぉ ヴぉ きょ ぎょ しょ じょ ちょ つぉ てょ でょ にょ ひょ びょ ぴょ ふぉ みょ りょ ぉ ょ オ コ ゴ ソ ゾ ト ド ノ ホ ボ ポ モ ヨ ロ ヲ ウォ ヴォ キョ ギョ ショ ジョ チョ ツォ テョ デョ ニョ ヒョ ビョ ピョ フォ ミョ リョ ォ ョ o".Split(),
+                "ん ン n ng".Split(),
+                "っ ッ cl q".Split()
+            };
+
+            foreach (var group in kanaGroups) {
+                foreach (var kana in group) {
+                    if (!kanas.ContainsKey(kana)) {
+                        kanas.Add(kana, group[0]);
+                    }
+                }
+            }
+            var pauseGroups = new List<string[]> {
+                "R pau AP SP".Split()
+            };
+
+            foreach (var group in pauseGroups) {
+                foreach (var pause in group) {
+                    if (!paus.ContainsKey(pause)) {
+                        paus.Add(pause, group[0]);
                     }
                 }
             }
@@ -114,13 +128,14 @@ namespace OpenUtau.Core.Voicevox {
     }
 
 
-    internal static class VoicevoxUtils {
+    public static class VoicevoxUtils {
         public const string VOLC = "volc";
         public const int headS = 1;
         public const int tailS = 1;
         public const double fps = 93.75;
         public const string defaultID = "6000";
         public static Dictionary_list dic = new Dictionary_list();
+        public static Phoneme_list phoneme_List = new Phoneme_list();
 
         public static VoicevoxNote VoicevoxVoiceBase(VoicevoxQueryMain qNotes, string id) {
             var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_audio_query", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(qNotes) };
@@ -156,11 +171,11 @@ namespace OpenUtau.Core.Voicevox {
                     string lyric = dic.Notetodic(notes, index);
                     int length = (int)Math.Round(((timeAxis.TickPosToMsPos(notes[index].Sum(n => n.duration)) / 1000f) * VoicevoxUtils.fps), MidpointRounding.AwayFromZero);
                     //Avoid synthesis without at least two frames.
-                    if (length < 2 ) {
+                    if (length < 2) {
                         length = 2;
                     }
                     int? tone = null;
-                    if (!string.IsNullOrEmpty(lyric) || VoicevoxUtils.IsPau(lyric)) {
+                    if (!string.IsNullOrEmpty(lyric) && !VoicevoxUtils.IsPau(lyric)) {
                         if (notes[index][0].phonemeAttributes != null) {
                             if (notes[index][0].phonemeAttributes.Length > 0) {
                                 tone = notes[index][0].tone + notes[index][0].phonemeAttributes[0].toneShift;
@@ -170,6 +185,8 @@ namespace OpenUtau.Core.Voicevox {
                         } else {
                             tone = notes[index][0].tone;
                         }
+                    } else {
+                        lyric = "";
                     }
                     qnotes.notes.Add(new VoicevoxQueryNotes {
                         lyric = lyric,
@@ -195,7 +212,7 @@ namespace OpenUtau.Core.Voicevox {
 
         public static double[] SampleCurve(RenderPhrase phrase, float[] curve, double defaultValue, double frameMs, int length, int headFrames, int tailFrames, Func<double, double> convert) {
             const int interval = 5;
-            var result = new double[length]; 
+            var result = new double[length];
             try {
                 if (curve == null) {
                     Array.Fill(result, defaultValue);
@@ -219,21 +236,13 @@ namespace OpenUtau.Core.Voicevox {
             return result;
         }
 
-
-        public static bool IsHiraKana(string s) {
-            foreach(char c in s.ToCharArray()) {
-                if (!('\u3041' <= c && c <= '\u309F') || ('\u30A0' <= c && c <= '\u30FF') || c == '\u30FC' || c == '\u30A0') {
-                    return false;
-                }
-            }
-            return true;
+        public static bool IsPau(string s) {
+            return phoneme_List.paus.ContainsKey(s);
         }
 
-        public static bool IsPau(string s) {
-            if (s.EndsWith("R") || s.ToLower().EndsWith("pau") || s.EndsWith("AP") || s.EndsWith("SP")) {
-                return true;
-            }
-            return false;
+        public static bool TryGetPau(string s,out string str) {
+            phoneme_List.paus.TryGetValue(s, out str);
+            return phoneme_List.paus.ContainsKey(s);
         }
 
         public static string getBaseSingerID(VoicevoxSinger singer) {
