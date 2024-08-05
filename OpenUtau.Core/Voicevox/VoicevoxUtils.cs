@@ -60,19 +60,15 @@ namespace OpenUtau.Core.Voicevox {
             foreach (var group in kanaGroups) {
                 foreach (var kana in group) {
                     if (!kanas.ContainsKey(kana)) {
-                        kanas.Add(kana, group[0]);
+                        kanas.Add(kana.Normalize(), group[0].Normalize());
                     }
                 }
             }
-            var pauseGroups = new List<string[]> {
-                "R pau AP SP".Split()
-            };
+            string[] pauseGroups = "R pau AP SP".Split();
 
-            foreach (var group in pauseGroups) {
-                foreach (var pause in group) {
-                    if (!paus.ContainsKey(pause)) {
-                        paus.Add(pause, group[0]);
-                    }
+            foreach (string group in pauseGroups) {
+                if (!paus.ContainsKey(group)) {
+                    paus.Add(group.Normalize(), pauseGroups[0].Normalize());
                 }
             }
         }
@@ -210,7 +206,7 @@ namespace OpenUtau.Core.Voicevox {
             return qnotes;
         }
 
-        public static double[] SampleCurve(RenderPhrase phrase, float[] curve, double defaultValue, double frameMs, int length, int headFrames, int tailFrames, Func<double, double> convert) {
+        public static double[] SampleCurve(RenderPhrase phrase, float[] curve, double defaultValue, double frameMs, int length, int headFrames, int tailFrames,double offset, Func<double, double> convert) {
             const int interval = 5;
             var result = new double[length];
             try {
@@ -220,7 +216,7 @@ namespace OpenUtau.Core.Voicevox {
                 }
 
                 for (int i = 0; i < length - headFrames - tailFrames; i++) {
-                    double posMs = phrase.positionMs - phrase.leadingMs + i * frameMs;
+                    double posMs = phrase.positionMs - phrase.leadingMs + (i * frameMs) + offset;
                     int ticks = phrase.timeAxis.MsPosToTickPos(posMs) - (phrase.position - phrase.leading);
                     int index = Math.Max(0, (int)((double)ticks / interval));
                     if (index < curve.Length) {

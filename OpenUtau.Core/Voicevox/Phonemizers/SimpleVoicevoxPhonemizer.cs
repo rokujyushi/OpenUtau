@@ -34,15 +34,17 @@ namespace Voicevox {
                 }
                 if (!IsSyllableVowelExtensionNote(notes[i])) {
                     string val = "error";
-                    if (phoneme_List.kanas.ContainsKey(notes[i].lyric)) {
+                    if (phoneme_List.kanas.ContainsKey(notes[i].lyric) || phoneme_List.paus.ContainsKey(notes[i].lyric)) {
                         if (VoicevoxUtils.phoneme_List.paus.TryGetValue(notes[i].lyric,out string str)) {
                             val = str;
                         } else if (VoicevoxUtils.dic.IsDic(notes[i].lyric))
                         {
                             val = VoicevoxUtils.dic.Lyrictodic(notes[i].lyric);
+                        } else {
+                            val = notes[i].lyric;
                         }
                     }
-                    phonemes.Add(new Phoneme { phoneme = val });
+                        phonemes.Add(new Phoneme { phoneme = val });
                 }
             }
             return new Result { phonemes = phonemes.ToArray() };
