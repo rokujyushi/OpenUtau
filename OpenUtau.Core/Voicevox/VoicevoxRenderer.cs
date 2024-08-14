@@ -109,6 +109,12 @@ namespace OpenUtau.Core.Voicevox {
                                     } else {
                                         vvNotes.volume = vvNotes.volume.Select(vol => vol = vol * phrase.phones[0].volume).ToList();
                                     }
+                                    for (int i = 0; i < vvNotes.phonemes[0].frame_length; i++) {
+                                        vvNotes.volume[i] = 0;
+                                    }
+                                    for (int i = vvNotes.volume.Count - vvNotes.phonemes[vvNotes.phonemes.Count-1].frame_length; i < vvNotes.volume.Count; i++) {
+                                        vvNotes.volume[i] = 0;
+                                    }
                                 } else {
                                     vvNotes = PhraseToVoicevoxNotes(phrase);
                                 }
