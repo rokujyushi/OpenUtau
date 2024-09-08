@@ -39,9 +39,10 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public string OnnxRunner { get; set; }
         public List<GpuInfo> OnnxGpuOptions { get; set; }
         [Reactive] public GpuInfo OnnxGpu { get; set; }
-        public List<int> DiffsingerSpeedupOptions { get; } = new List<int> { 1, 5, 10, 20, 50, 100 };
-        [Reactive] public int DiffSingerDepth { get; set; }
-        [Reactive] public int DiffsingerSpeedup { get; set; }
+        public List<int> DiffSingerStepsOptions { get; } = new List<int> { 2, 5, 10, 20, 50, 100, 200, 500, 1000 };
+        [Reactive] public double DiffSingerDepth { get; set; }
+        [Reactive] public int DiffSingerSteps { get; set; }
+        [Reactive] public bool DiffSingerTensorCache { get; set; }
         [Reactive] public bool SkipRenderingMutedTracks { get; set; }
         [Reactive] public bool HighThreads { get; set; }
         [Reactive] public int Theme { get; set; }
@@ -53,6 +54,7 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public bool ShowGhostNotes { get; set; }
         [Reactive] public int OtoEditor { get; set; }
         public string VLabelerPath => Preferences.Default.VLabelerPath;
+        public string SetParamPath => Preferences.Default.SetParamPath;
         [Reactive] public bool ClearCacheOnQuit { get; set; }
         public int LogicalCoreCount {
             get => Environment.ProcessorCount;
@@ -139,8 +141,9 @@ namespace OpenUtau.App.ViewModels {
                OnnxRunnerOptions[0] : Preferences.Default.OnnxRunner;
             OnnxGpuOptions = Onnx.getGpuInfo();
             OnnxGpu = OnnxGpuOptions.FirstOrDefault(x => x.deviceId == Preferences.Default.OnnxGpu, OnnxGpuOptions[0]);
-            DiffSingerDepth = Preferences.Default.DiffSingerDepth;
-            DiffsingerSpeedup = Preferences.Default.DiffsingerSpeedup;
+            DiffSingerDepth = Preferences.Default.DiffSingerDepth * 100;
+            DiffSingerSteps = Preferences.Default.DiffSingerSteps;
+            DiffSingerTensorCache = Preferences.Default.DiffSingerTensorCache;
             SkipRenderingMutedTracks = Preferences.Default.SkipRenderingMutedTracks;
             Theme = Preferences.Default.Theme;
             PenPlusDefault = Preferences.Default.PenPlusDefault;
@@ -325,14 +328,19 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Default.ClearCacheOnQuit = index;
                     Preferences.Save();
                 });
-            this.WhenAnyValue(vm => vm.DiffsingerSpeedup)
+            this.WhenAnyValue(vm => vm.DiffSingerSteps)
                 .Subscribe(index => {
-                    Preferences.Default.DiffsingerSpeedup = index;
+                    Preferences.Default.DiffSingerSteps = index;
                     Preferences.Save();
                 });
             this.WhenAnyValue(vm => vm.DiffSingerDepth)
                 .Subscribe(index => {
-                    Preferences.Default.DiffSingerDepth = index;
+                    Preferences.Default.DiffSingerDepth = index / 100;
+                    Preferences.Save();
+                });
+            this.WhenAnyValue(vm => vm.DiffSingerTensorCache)
+                .Subscribe(useCache => {
+                    Preferences.Default.DiffSingerTensorCache = useCache;
                     Preferences.Save();
                 });
             this.WhenAnyValue(vm => vm.SkipRenderingMutedTracks)
@@ -366,6 +374,12 @@ namespace OpenUtau.App.ViewModels {
             Preferences.Default.VLabelerPath = path;
             Preferences.Save();
             this.RaisePropertyChanged(nameof(VLabelerPath));
+        }
+
+        public void SetSetParamPath(string path) {
+            Preferences.Default.SetParamPath = path;
+            Preferences.Save();
+            this.RaisePropertyChanged(nameof(SetParamPath));
         }
     }
 }

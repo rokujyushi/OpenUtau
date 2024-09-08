@@ -157,10 +157,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.TextFileEncoding = encoding.WebName);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set encoding", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         public void SetImage(string filepath) {
@@ -169,10 +170,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.Image = filepath);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set image", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         public void SetPortrait(string filepath) {
@@ -181,10 +183,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.Portrait = filepath);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set portrait", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         private void SetSingerType(string singerType) {
@@ -193,10 +196,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.SingerType = singerType);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set singer type", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         private void SetDefaultPhonemizer(Api.PhonemizerFactory factory) {
@@ -205,10 +209,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.DefaultPhonemizer = factory.type.FullName ?? string.Empty);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set portrait", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         public void SetUseFilenameAsAlias() {
@@ -217,10 +222,11 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 ModifyConfig(Singer, config => config.UseFilenameAsAlias = !this.UseFilenameAsAlias);
+                Refresh();
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to set use filename", e));
+                var customEx = new MessageCustomizableException("Failed to save singer config", "<translate:errors.failed.savesingerconfig>", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
-            Refresh();
         }
 
         private static void ModifyConfig(USinger singer, Action<VoicebankConfig> modify) {
@@ -283,20 +289,15 @@ namespace OpenUtau.App.ViewModels {
                 singerId = Singer.Id;
             }
             DocManager.Inst.ExecuteCmd(new LoadingNotification(typeof(SingersDialog), true, "singer"));
-            try {
-                SingerManager.Inst.SearchAllSingers();
-                this.RaisePropertyChanged(nameof(Singers));
-                if (!string.IsNullOrEmpty(singerId) && SingerManager.Inst.Singers.TryGetValue(singerId, out var singer)) {
-                    Singer = singer;
-                } else {
-                    Singer = Singers.FirstOrDefault();
-                }
-                DocManager.Inst.ExecuteCmd(new SingersRefreshedNotification());
-            } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(e));
-            } finally {
-                DocManager.Inst.ExecuteCmd(new LoadingNotification(typeof(SingersDialog), false, "singer"));
+            SingerManager.Inst.SearchAllSingers();
+            this.RaisePropertyChanged(nameof(Singers));
+            if (!string.IsNullOrEmpty(singerId) && SingerManager.Inst.Singers.TryGetValue(singerId, out var singer)) {
+                Singer = singer;
+            } else {
+                Singer = Singers.FirstOrDefault();
             }
+            DocManager.Inst.ExecuteCmd(new SingersRefreshedNotification());
+            DocManager.Inst.ExecuteCmd(new LoadingNotification(typeof(SingersDialog), false, "singer"));
         }
 
         Bitmap? LoadAvatar(USinger singer) {
@@ -338,7 +339,8 @@ namespace OpenUtau.App.ViewModels {
             try {
                 Subbanks.AddRange(Singer.Subbanks);
             } catch (Exception e) {
-                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification("Failed to load subbanks", e));
+                var customEx = new MessageCustomizableException("Failed to load subbanks", "<translate:errors.failed.load>: subbanks", e);
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
             }
         }
 
