@@ -57,6 +57,8 @@ namespace OpenUtau.Core.Ustx {
         [YamlIgnore] public bool PhonemesUpToDate => notesTimestamp == phonemesTimestamp;
         [YamlIgnore] public ISignalSource Mix => mix;
 
+        public List<UBookmark> bookmarks = new List<UBookmark>();
+
         public override string DisplayName => name;
         public override int Duration { get => duration; set => duration = value; }
 
@@ -411,4 +413,21 @@ namespace OpenUtau.Core.Ustx {
             Load(project);
         }
     }
+
+    public class UBookmark {
+        public int barPosition;
+        public string bookmarkStr;
+        public int bookmarkNum;
+        public string bookmarkPartName;
+
+        public UBookmark() { }
+        public UBookmark(int barPosition, string bookmarkStr, int bookmarkNum, string bookmarkPartName) {
+            this.barPosition = barPosition;
+            this.bookmarkStr = bookmarkStr;
+            this.bookmarkNum = bookmarkNum;
+            this.bookmarkPartName = bookmarkPartName;
+        }
+        public override string ToString() => $"{bookmarkNum}:{bookmarkStr}@bar{barPosition}";
+    }
+
 }

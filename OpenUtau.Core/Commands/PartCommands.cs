@@ -1,4 +1,6 @@
-﻿using OpenUtau.Core.Ustx;
+﻿using System.Linq;
+using System;
+using OpenUtau.Core.Ustx;
 
 namespace OpenUtau.Core {
     public abstract class PartCommand : UCommand {
@@ -82,4 +84,61 @@ namespace OpenUtau.Core {
         public override void Execute() => project.parts[index] = newPart;
         public override void Unexecute() => project.parts[index] = part;
     }
+
+    public class AddBookMarkCommand : PartCommand {
+        protected UVoicePart part;
+        protected int bar;
+        protected string bookmarkStr;
+        protected int bookmarkNum;
+        protected string bookmarkPartName;
+        public AddBookMarkCommand(UProject project, UVoicePart part, int bar, string bookmarkStr, int bookmarkNum, string bookmarkPartName) : base(project, part) {
+            this.part = part;
+            this.bar = bar;
+            this.bookmarkStr = bookmarkStr;
+            this.bookmarkNum = bookmarkNum;
+            this.bookmarkPartName = bookmarkPartName;
+        }
+        protected AddBookMarkCommand(UProject project, UPart part) : base(project, part) { }
+        public override void Execute() {
+            int index = part.bookmarks.FindIndex(bookmark => bookmark.barPosition > bar);
+            var bookMark = new UBookmark {
+                barPosition = bar,
+                bookmarkStr = bookmarkStr,
+                bookmarkNum = bookmarkNum,
+                bookmarkPartName = bookmarkPartName
+            };
+            if (index >= 0) {
+                part.bookmarks.Insert(index - 1, bookMark);
+            } else {
+                part.bookmarks.Add(bookMark);
+            }
+        }
+        public override void Unexecute() {
+            int index = project.parts.OfType<UVoicePart>().SelectMany(x => x.bookmarks).ToList().Find(bookmark => bookmark.barPosition > bar).bookmarkNum;
+            if (index >= 0) {
+                part.bookmarks.RemoveAt(index);
+            } else {
+                throw new Exception("Cannot remove non-exist time signature change");
+            }
+        }
+        public override string ToString() => $"Add bookmark change {bookmarkPartName}_{bookmarkNum}:{bookmarkStr} at bar {bar}";
+    }
+
+    public class DelBookMarkCommand : AddBookMarkCommand {
+        public DelBookMarkCommand(UProject project, UPart part, UPart newPart, int bar) : base(project, part) {
+            this.bar = bar;
+            var bookMark = (part as UVoicePart).bookmarks.Find(bookmark => bookmark.barPosition > bar);
+            bookmarkStr = bookMark.bookmarkStr;
+            bookmarkNum = bookMark.bookmarkNum;
+            bookmarkPartName = bookMark.bookmarkPartName;
+        }
+        public override void Execute() {
+            base.Unexecute();
+        }
+        public override void Unexecute() {
+            base.Execute();
+        }
+        public override string ToString() => $"Del bookmark change {bookmarkPartName}_{bookmarkNum}:{bookmarkStr} at bar {bar}";
+    }
+
 }
