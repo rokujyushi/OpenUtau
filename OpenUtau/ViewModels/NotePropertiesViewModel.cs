@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reactive.Linq;
 using Avalonia.Media;
+using OpenUtau.App.Controls;
 using OpenUtau.Core;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
@@ -45,9 +46,15 @@ namespace OpenUtau.App.ViewModels {
         private NotePresets.PortamentoPreset? appliedPortamentoPreset = NotePresets.Default.DefaultPortamento;
         private NotePresets.VibratoPreset? appliedVibratoPreset = NotePresets.Default.DefaultVibrato;
 
+        private ObservableCollection<NotePropertyExpression> _controls;
+        public ObservableCollection<NotePropertyExpression> Controls {
+            get => _controls; 
+            set => this.RaiseAndSetIfChanged(ref _controls, value);
+        }
+
         public UVoicePart? Part;
+        public UProject Project;
         private HashSet<UNote> selectedNotes = new HashSet<UNote>();
-        public List<NotePropertyExpViewModel> Expressions = new List<NotePropertyExpViewModel>();
         public static bool PanelControlPressed { get; set; } = false;
         public static bool NoteLoading { get; set; } = false;
         private static bool AllowNoteEdit { get => PanelControlPressed && !NoteLoading; }
@@ -55,6 +62,8 @@ namespace OpenUtau.App.ViewModels {
         public NotePropertiesViewModel() {
             PortamentoPresets = new ObservableCollection<NotePresets.PortamentoPreset>(NotePresets.Default.PortamentoPresets);
             VibratoPresets = new ObservableCollection<NotePresets.VibratoPreset>(NotePresets.Default.VibratoPresets);
+            _controls = new ObservableCollection<NotePropertyExpression>();
+            Project = new UProject();
 
             this.WhenAnyValue(vm => vm.ApplyPortamentoPreset)
                 .WhereNotNull()
@@ -158,13 +167,11 @@ namespace OpenUtau.App.ViewModels {
             AttachExpressions();
         }
 
-        public void LoadPart(UPart? part) {
-            Expressions.Clear();
-            if (part != null && part is UVoicePart) {
-                this.Part = part as UVoicePart;
-                var track = DocManager.Inst.Project.tracks[part.trackNo];
-
-                foreach (KeyValuePair<string, UExpressionDescriptor> pair in DocManager.Inst.Project.expressions) {
+        public void LoadPart() {
+            Controls.Clear();
+            if (Part != null && Project != null) {
+                var track = DocManager.Inst.Project.tracks[Part.trackNo];
+                foreach (KeyValuePair<string, UExpressionDescriptor> pair in Project.expressions) {
                     if (track.TryGetExpDescriptor(DocManager.Inst.Project, pair.Key, out var descriptor) && descriptor.type != UExpressionType.Curve) {
                         var viewModel = new NotePropertyExpViewModel(descriptor, this);
                         if (descriptor.abbr == Ustx.CLR) {
@@ -173,52 +180,54 @@ namespace OpenUtau.App.ViewModels {
                                 track.VoiceColorExp.options.ForEach(opt => viewModel.Options.Add(opt));
                             }
                         }
-                        Expressions.Add(viewModel);
+                        Controls.Add(new NotePropertyExpression() { DataContext = viewModel });
                     }
                 }
                 AttachExpressions();
-            } else {
-                this.Part = null;
             }
         }
 
         private void AttachExpressions() {
-            if (Expressions.Count > 0) {
+            if (Controls.Count > 0) {
                 if (selectedNotes.Count > 0) {
                     var note = selectedNotes.First();
 
-                    foreach (NotePropertyExpViewModel exp in Expressions) {
-                        exp.IsNoteSelected = true;
-                        var phonemeExpression = note.phonemeExpressions.FirstOrDefault(e => e.abbr == exp.abbr);
-                        if (phonemeExpression != null) {
-                            if (exp.IsNumerical) {
-                                exp.Value = phonemeExpression.value;
-                            } else if (exp.IsOptions) {
-                                exp.SelectedOption = (int)phonemeExpression.value;
+                    foreach (NotePropertyExpression cotl in Controls) {
+                        if (cotl.DataContext is NotePropertyExpViewModel exp) {
+                            exp.IsNoteSelected = true;
+                            var phonemeExpression = note.phonemeExpressions.FirstOrDefault(e => e.abbr == exp.abbr);
+                            if (phonemeExpression != null) {
+                                if (exp.IsNumerical) {
+                                    exp.Value = phonemeExpression.value;
+                                } else if (exp.IsOptions) {
+                                    exp.SelectedOption = (int)phonemeExpression.value;
+                                }
+                                exp.HasValue = true;
+                            } else {
+                                if (exp.IsNumerical) {
+                                    exp.Value = exp.defaultValue;
+                                } else if (exp.IsOptions) {
+                                    exp.SelectedOption = (int)exp.defaultValue;
+                                }
+
+                                if (selectedNotes.Any(note => note.phonemeExpressions.FirstOrDefault(e => e.abbr == exp.abbr) != null)) {
+                                    exp.HasValue = true;
+                                } else {
+                                    exp.HasValue = false;
+                                }
                             }
-                            exp.HasValue = true;
-                        } else {
+                        }
+                    }
+                } else {
+                    foreach (NotePropertyExpression cotl in Controls) {
+                        if (cotl.DataContext is NotePropertyExpViewModel exp) {
+                            exp.IsNoteSelected = false;
+                            exp.HasValue = false;
                             if (exp.IsNumerical) {
                                 exp.Value = exp.defaultValue;
                             } else if (exp.IsOptions) {
                                 exp.SelectedOption = (int)exp.defaultValue;
                             }
-
-                            if (selectedNotes.Any(note => note.phonemeExpressions.FirstOrDefault(e => e.abbr == exp.abbr) != null)) {
-                                exp.HasValue = true;
-                            } else {
-                                exp.HasValue = false;
-                            }
-                        }
-                    }
-                } else {
-                    foreach (NotePropertyExpViewModel exp in Expressions) {
-                        exp.IsNoteSelected = false;
-                        exp.HasValue = false;
-                        if (exp.IsNumerical) {
-                            exp.Value = exp.defaultValue;
-                        } else if (exp.IsOptions) {
-                            exp.SelectedOption = (int)exp.defaultValue;
                         }
                     }
                 }

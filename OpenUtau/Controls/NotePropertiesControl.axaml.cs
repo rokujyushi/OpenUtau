@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -16,9 +18,51 @@ namespace OpenUtau.App.Controls {
     public partial class NotePropertiesControl : UserControl, ICmdSubscriber {
         private readonly NotePropertiesViewModel ViewModel;
 
+        public static readonly DirectProperty<NotePropertiesControl, UVoicePart> VoicePartProperty =
+            AvaloniaProperty.RegisterDirect<NotePropertiesControl, UVoicePart>(
+                nameof(VoicePart),
+                o => o.VoicePart,
+                (o, v) => o.VoicePart = v);
+        public static readonly DirectProperty<NotePropertiesControl, UProject> ProjectProperty =
+            AvaloniaProperty.RegisterDirect<NotePropertiesControl, UProject>(
+                nameof(Project),
+                o => o.Project,
+                (o, v) => o.Project = v);
+
+        public UVoicePart VoicePart {
+            get => _voicePart;
+            private set => SetAndRaise(VoicePartProperty, ref _voicePart, value);
+        }
+        public UProject Project {
+            get => _project;
+            private set => SetAndRaise(ProjectProperty, ref _project, value);
+        }
+
+        private UVoicePart _voicePart;
+        private UProject _project;
+
+        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change) {
+            base.OnPropertyChanged(change);
+            if (change.Property == VoicePartProperty ||
+                change.Property == ProjectProperty) {
+                InvalidateVisual();
+                if(VoicePart != null) {
+                    ((NotePropertiesViewModel)DataContext!).Part = VoicePart;
+                }
+                if (Project != null) {
+                    ((NotePropertiesViewModel)DataContext!).Project = Project;
+                }
+                LoadPart();
+            }
+        }
+
         public NotePropertiesControl() {
             InitializeComponent();
             DataContext = ViewModel = new NotePropertiesViewModel();
+            _voicePart = new UVoicePart();
+            _project = new UProject();
+            
+
 
             this.GetLogicalDescendants().OfType<TextBox>().ForEach(box => {
                 box.AddHandler(GotFocusEvent, OnTextBoxGotFocus);
@@ -29,30 +73,27 @@ namespace OpenUtau.App.Controls {
                 slider.AddHandler(PointerReleasedEvent, SliderPointerReleased, RoutingStrategies.Tunnel);
                 slider.AddHandler(PointerMovedEvent, SliderPointerMoved, RoutingStrategies.Tunnel);
             });
-          
+
             MessageBus.Current.Listen<PianorollRefreshEvent>()
                 .Subscribe(e => {
-                    if(e.refreshItem == "Part") {
-                        LoadPart(ViewModel.Part);
+                    if (e.refreshItem == "Part") {
+                        ((NotePropertiesViewModel)DataContext!).Part = VoicePart;
+                        ((NotePropertiesViewModel)DataContext!).Project = Project;
+                        LoadPart();
                     }
                 });
 
             DocManager.Inst.AddSubscriber(this);
         }
 
-        private void LoadPart(UPart? part) {
+        private void LoadPart() {
             if (NotePropertiesViewModel.PanelControlPressed) {
                 NotePropertiesViewModel.PanelControlPressed = false;
                 DocManager.Inst.EndUndoGroup();
             }
             NotePropertiesViewModel.NoteLoading = true;
 
-            ViewModel.LoadPart(part);
-            ExpressionsPanel.Children.Clear();
-            foreach (NotePropertyExpViewModel expVM in ViewModel.Expressions) {
-                var control = new NotePropertyExpression() { DataContext = expVM };
-                ExpressionsPanel.Children.Add(control);
-            }
+            ViewModel.LoadPart();
 
             NotePropertiesViewModel.NoteLoading = false;
         }
@@ -154,21 +195,25 @@ namespace OpenUtau.App.Controls {
 
         public void OnNext(UCommand cmd, bool isUndo) {
             if (cmd is UNotification notif) {
+                ((NotePropertiesViewModel)DataContext!).Part = notif.part as UVoicePart;
+                ((NotePropertiesViewModel)DataContext!).Project = notif.project;
                 if (cmd is LoadPartNotification) {
-                    LoadPart(notif.part);
+                    LoadPart();
                 } else if (cmd is LoadProjectNotification) {
-                    LoadPart(null);
+                    LoadPart();
                 } else if (cmd is SingersRefreshedNotification) {
-                    LoadPart(notif.part);
+                    LoadPart();
                 }
             } else if (cmd is TrackCommand) {
                 if (cmd is RemoveTrackCommand removeTrack) {
                     if (ViewModel.Part != null && removeTrack.removedParts.Contains(ViewModel.Part)) {
-                        LoadPart(null);
+                        LoadPart();
                     }
                 }
             } else if (cmd is ConfigureExpressionsCommand) {
-                LoadPart(null);
+                if (VoicePart != null) {
+                    LoadPart();
+                }
             }
         }
     }

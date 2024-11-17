@@ -637,7 +637,7 @@
               IsEnabled="{Binding NotesViewModel.ShowNoteParams}"
               IsVisible="{Binding NotesViewModel.ShowNoteParams}"
               Background="{DynamicResource SystemRegionBrush}" Padding="0">
-        <c:NotePropertiesControl/>
+        <c:NotePropertiesControl Project="{Binding NotesViewModel.Project}" VoicePart="{Binding NotesViewModel.Part}"/>
       </Border>
 
       <Border Grid.Row="2" Grid.RowSpan="2" Grid.Column="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"

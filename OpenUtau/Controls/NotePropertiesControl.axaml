@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:OpenUtau.App.ViewModels"
+             xmlns:local="clr-namespace:OpenUtau.App.Controls"
              mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="600" Width="400"
              x:Class="OpenUtau.App.Controls.NotePropertiesControl" KeyDown="OnKeyDown" Margin="0">
   <UserControl.Styles>
@@ -153,9 +154,16 @@
         </Expander>
 
         <Expander Header="{DynamicResource exps.caption}" HorizontalAlignment="Stretch" Margin="0,2,4,0">
-          <StackPanel Name="ExpressionsPanel" />
+          <StackPanel>
+            <ItemsControl ItemsSource="{Binding Controls}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <local:NotePropertyExpression />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
         </Expander>
-
       </StackPanel>
     </ScrollViewer>
   </Grid>
