@@ -45,15 +45,13 @@ namespace OpenUtau.App.ViewModels {
         }
         private NotePresets.PortamentoPreset? appliedPortamentoPreset = NotePresets.Default.DefaultPortamento;
         private NotePresets.VibratoPreset? appliedVibratoPreset = NotePresets.Default.DefaultVibrato;
-
-        private ObservableCollection<NotePropertyExpression> _controls;
-        public ObservableCollection<NotePropertyExpression> Controls {
+        [Reactive] public ObservableCollection<NotePropertyExpression> Controls {
             get => _controls; 
             set => this.RaiseAndSetIfChanged(ref _controls, value);
         }
+        private ObservableCollection<NotePropertyExpression> _controls;
 
         public UVoicePart? Part;
-        public UProject Project;
         private HashSet<UNote> selectedNotes = new HashSet<UNote>();
         public static bool PanelControlPressed { get; set; } = false;
         public static bool NoteLoading { get; set; } = false;
@@ -63,7 +61,6 @@ namespace OpenUtau.App.ViewModels {
             PortamentoPresets = new ObservableCollection<NotePresets.PortamentoPreset>(NotePresets.Default.PortamentoPresets);
             VibratoPresets = new ObservableCollection<NotePresets.VibratoPreset>(NotePresets.Default.VibratoPresets);
             _controls = new ObservableCollection<NotePropertyExpression>();
-            Project = new UProject();
 
             this.WhenAnyValue(vm => vm.ApplyPortamentoPreset)
                 .WhereNotNull()
@@ -169,9 +166,9 @@ namespace OpenUtau.App.ViewModels {
 
         public void LoadPart() {
             Controls.Clear();
-            if (Part != null && Project != null) {
+            if (Part != null) {
                 var track = DocManager.Inst.Project.tracks[Part.trackNo];
-                foreach (KeyValuePair<string, UExpressionDescriptor> pair in Project.expressions) {
+                foreach (KeyValuePair<string, UExpressionDescriptor> pair in DocManager.Inst.Project.expressions) {
                     if (track.TryGetExpDescriptor(DocManager.Inst.Project, pair.Key, out var descriptor) && descriptor.type != UExpressionType.Curve) {
                         var viewModel = new NotePropertyExpViewModel(descriptor, this);
                         if (descriptor.abbr == Ustx.CLR) {

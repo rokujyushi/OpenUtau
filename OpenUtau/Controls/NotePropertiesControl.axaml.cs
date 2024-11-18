@@ -23,34 +23,19 @@ namespace OpenUtau.App.Controls {
                 nameof(VoicePart),
                 o => o.VoicePart,
                 (o, v) => o.VoicePart = v);
-        public static readonly DirectProperty<NotePropertiesControl, UProject> ProjectProperty =
-            AvaloniaProperty.RegisterDirect<NotePropertiesControl, UProject>(
-                nameof(Project),
-                o => o.Project,
-                (o, v) => o.Project = v);
 
         public UVoicePart VoicePart {
             get => _voicePart;
             private set => SetAndRaise(VoicePartProperty, ref _voicePart, value);
         }
-        public UProject Project {
-            get => _project;
-            private set => SetAndRaise(ProjectProperty, ref _project, value);
-        }
-
         private UVoicePart _voicePart;
-        private UProject _project;
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change) {
             base.OnPropertyChanged(change);
-            if (change.Property == VoicePartProperty ||
-                change.Property == ProjectProperty) {
+            if (change.Property == VoicePartProperty) {
                 InvalidateVisual();
                 if(VoicePart != null) {
                     ((NotePropertiesViewModel)DataContext!).Part = VoicePart;
-                }
-                if (Project != null) {
-                    ((NotePropertiesViewModel)DataContext!).Project = Project;
                 }
                 LoadPart();
             }
@@ -60,8 +45,6 @@ namespace OpenUtau.App.Controls {
             InitializeComponent();
             DataContext = ViewModel = new NotePropertiesViewModel();
             _voicePart = new UVoicePart();
-            _project = new UProject();
-            
 
 
             this.GetLogicalDescendants().OfType<TextBox>().ForEach(box => {
@@ -78,7 +61,6 @@ namespace OpenUtau.App.Controls {
                 .Subscribe(e => {
                     if (e.refreshItem == "Part") {
                         ((NotePropertiesViewModel)DataContext!).Part = VoicePart;
-                        ((NotePropertiesViewModel)DataContext!).Project = Project;
                         LoadPart();
                     }
                 });
@@ -195,13 +177,10 @@ namespace OpenUtau.App.Controls {
 
         public void OnNext(UCommand cmd, bool isUndo) {
             if (cmd is UNotification notif) {
-                ((NotePropertiesViewModel)DataContext!).Part = notif.part as UVoicePart;
-                ((NotePropertiesViewModel)DataContext!).Project = notif.project;
-                if (cmd is LoadPartNotification) {
-                    LoadPart();
-                } else if (cmd is LoadProjectNotification) {
-                    LoadPart();
-                } else if (cmd is SingersRefreshedNotification) {
+                if (notif.part != null) {
+                    ((NotePropertiesViewModel)DataContext!).Part = notif.part as UVoicePart;
+                }
+                if (cmd is LoadPartNotification || cmd is LoadProjectNotification || cmd is SingersRefreshedNotification) {
                     LoadPart();
                 }
             } else if (cmd is TrackCommand) {
@@ -212,8 +191,9 @@ namespace OpenUtau.App.Controls {
                 }
             } else if (cmd is ConfigureExpressionsCommand) {
                 if (VoicePart != null) {
-                    LoadPart();
+                    ((NotePropertiesViewModel)DataContext!).Part = VoicePart;
                 }
+                LoadPart();
             }
         }
     }
