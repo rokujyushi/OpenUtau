@@ -41,14 +41,14 @@ namespace OpenUtau.Core {
         public List<UNote> NotesClipboard { get; set; }
         internal PhonemizerRunner PhonemizerRunner { get; private set; }
 
-        public void Initialize() {
+        public void Initialize(Thread mainThread, TaskScheduler mainScheduler) {
             AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler((sender, args) => {
                 CrashSave();
             });
             SearchAllPlugins();
             SearchAllLegacyPlugins();
-            mainThread = Thread.CurrentThread;
-            mainScheduler = TaskScheduler.FromCurrentSynchronizationContext();
+            this.mainThread = mainThread;
+            this.mainScheduler = mainScheduler;
             PhonemizerRunner = new PhonemizerRunner(mainScheduler);
         }
 
@@ -178,6 +178,7 @@ namespace OpenUtau.Core {
                 Log.Error(e, "Autosave failed.");
             }
         }
+
 
         public void ExecuteCmd(UCommand cmd) {
             if (mainThread != Thread.CurrentThread) {
