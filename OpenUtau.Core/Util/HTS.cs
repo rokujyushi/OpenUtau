@@ -1,13 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using YamlDotNet.Core.Tokens;
 
 //This file implement utaupy.hts python library's function
 //https://github.com/oatsu-gh/utaupy/blob/master/utaupy/hts.py
 
 //HTS labels use b instead of #
 //In HTS labels, "xx" is a preserved keyword that means null
-namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
+namespace OpenUtau.Core.Util {
     public static class HTS {
         public static readonly string[] KeysInOctave = {
             "C",
@@ -38,6 +39,11 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
             return noteNum < 0 ? string.Empty : KeysInOctave[noteNum % 12] + (noteNum / 12 - 1).ToString();
         }
 
+        public static string GetOctaveNum(int noteNum) {
+            NameInOctave.TryGetValue(KeysInOctave[noteNum % 12].ToString(), out int num);
+            return noteNum < 0 ? string.Empty : num.ToString();
+        }
+
         //return -1 if error
         public static int NameToTone(string name) {
             if (name.Length < 2) {
@@ -56,11 +62,11 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
 
         //write integer with "p" as positive and "n" as negative. 0 is "p0"
         public static string WriteInt(int integer) {
-            return (integer >= 0 ? "p":"m" )+Math.Abs(integer).ToString();
+            return (integer >= 0 ? "p" : "m") + Math.Abs(integer).ToString();
         }
     }
-    
-    public class HTSPhoneme{
+
+    public class HTSPhoneme {
         public string symbol;
 
         //Links to this phoneme's neighbors and parent
@@ -87,7 +93,7 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
 
         public HTSPhoneme? beforePrev {
             get {
-                if (prev == null) { return null; } else { return prev.prev;}
+                if (prev == null) { return null; } else { return prev.prev; }
             }
         }
 
@@ -113,14 +119,17 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
                 + string.Format(
                     "/E:{0}]{1}^{2}={3}~{4}!{5}@{6}#{7}+{8}]{9}${10}|{11}[{12}&{13}]{14}={15}^{16}~{17}#{18}_{19};{20}${21}&{22}%{23}[{24}|{25}]{26}-{27}^{28}+{29}~{30}={31}@{32}${33}!{34}%{35}#{36}|{37}|{38}-{39}&{40}&{41}+{42}[{43};{44}]{45};{46}~{47}~{48}^{49}^{50}@{51}[{52}#{53}={54}!{55}~{56}+{57}!{58}^{59}",
                     e())
-                +string.Format("/F:{0}#{1}#{2}-{3}${4}${5}+{6}%{7};{8}",f())
-                + "/G:xx_xx/H:xx_xx/I:xx_xx/J:xx~xx@1"
+                + string.Format("/F:{0}#{1}#{2}-{3}${4}${5}+{6}%{7};{8}", f())
+                + string.Format("/G:{0}_{1}", g())
+                + string.Format("/H:{0}_{1}", h())
+                + string.Format("/I:{0}_{1}", i())
+                + string.Format("/J:{0}~{1}@{2}", j())
                 ;
             return result;
         }
 
         public string[] p() {
-            var result = Enumerable.Repeat("xx",16).ToArray();
+            var result = Enumerable.Repeat("xx", 16).ToArray();
             result[0] = type;
             result[1] = (beforePrev == null) ? "xx" : beforePrev.symbol;
             result[2] = (prev == null) ? "xx" : prev.symbol;
@@ -149,13 +158,29 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
         public string[] d() {
             return parent.d();
         }
-        
+
         public string[] e() {
             return parent.e();
         }
 
         public string[] f() {
             return parent.f();
+        }
+
+        public string[] g() {
+            return parent.g();
+        }
+
+        public string[] h() {
+            return parent.h();
+        }
+
+        public string[] i() {
+            return parent.i();
+        }
+
+        public string[] j() {
+            return parent.j();
         }
     }
 
@@ -169,16 +194,31 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
         public int indexBackwards = 0;
         public int sentenceDurMs = 0;
 
+        //TimeSignatures
+        public int beatPerBar = 0;
+        public int beatUnit = 0;
+
+        public double key = 0;
+        public double bpm = 0;
         public int tone = 0;
         public string[] symbols;
+        public string lang;
+        public string accent;
 
         public HTSNote? prev;
         public HTSNote? next;
+        public HTSPhrase parent;
 
-        public HTSNote(string[] symbols, int tone, int startms,int endms,int positionTicks, int durationTicks) {
+        public HTSNote(string[] symbols, int beatPerBar, int beatUnit, int key, double bpm, int tone, string lang, string accent, int startms, int endms, int positionTicks, int durationTicks) {
             this.startMs = startms;
             this.endMs = endms;
+            this.beatPerBar = beatPerBar;
+            this.beatUnit = beatUnit;
+            this.key = key;
+            this.bpm = bpm;
             this.tone = tone;
+            this.lang = lang;
+            this.accent = accent;
             this.symbols = symbols;
             this.positionTicks = positionTicks;
             this.durationTicks = durationTicks;
@@ -197,8 +237,8 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
                 symbols.Length.ToString(),
                 "1",
                 "1",
-                "xx",
-                "xx"
+                lang != string.Empty ? lang : "xx",
+                "0"//"xx"
             };
         }
 
@@ -221,6 +261,10 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
         public string[] e() {
             var result = Enumerable.Repeat("xx", 60).ToArray();
             result[0] = HTS.GetToneName(tone);
+            result[1] = HTS.GetOctaveNum(tone);
+            result[2] = key.ToString();
+            result[3] = $"{beatPerBar}/{beatUnit}";//beat
+            result[4] = bpm.ToString();//tempo
             result[5] = "1";//number_of_syllables
             result[6] = ((durationMs + 5) / 10).ToString();//duration in 10ms
             result[7] = ((durationTicks + 10) / 20).ToString(); //length in 96th note, or 20 ticks
@@ -239,12 +283,13 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
         }
 
         public string[] d() {
-            if(prev == null) {
+            if (prev == null) {
                 return Enumerable.Repeat("xx", 60).ToArray();
             } else {
                 return prev.e();
             }
         }
+
         public string[] f() {
             if (next == null) {
                 return Enumerable.Repeat("xx", 60).ToArray();
@@ -252,5 +297,163 @@ namespace OpenUtau.Plugin.Builtin.EnunuOnnx {
                 return next.e();
             }
         }
+
+        public string[] g() {
+            if (prev == null) {
+                return Enumerable.Repeat("xx", 2).ToArray();
+            } else {
+                return prev.b();
+            }
+        }
+
+        public string[] h() {
+            return parent.h();
+        }
+
+        public string[] i() {
+            return parent.i();
+        }
+
+        public string[] j() {
+            return parent.j();
+        }
+    }
+
+    public class HTSPhrase {
+        public HTSNote[]? prev;
+        public HTSNote[]? next;
+        public HTSNote[] notes;
+
+        public HTSPhrase(HTSNote[] notes) {
+            this.notes = notes;
+        }
+
+        public static (int measure, string beat) MeasureLength(string flag, int currentMeasure) {
+            int measure;
+            string beat;
+
+            switch (flag) {
+                case "4/4":
+                    beat = "4/4";
+                    measure = 1920;
+                    break;
+                case "3/4":
+                    beat = "3/4";
+                    measure = 1440;
+                    break;
+                case "2/4":
+                    beat = "2/4";
+                    measure = 960;
+                    break;
+                case "2/2":
+                    beat = "2/2";
+                    measure = 1920;
+                    break;
+                case "6/8":
+                    beat = "6/8";
+                    measure = 1440;
+                    break;
+                default:
+                    beat = null;  // ここでbeatを初期化する必要があります
+                    measure = currentMeasure;
+                    break;
+            }
+
+            return (measure, beat);
+        }
+
+        public string[] e() {
+            int measure = 1920;
+            string beat = "4/4"; // 仮の値
+            int lastMeasure = 0;
+            int tickSum = 0;
+            List<string> startEndCheck = new List<string>();
+            List<int> noteCountArray = new List<int>();
+            List<double> timeLength = new List<double>();
+            List<int> tickInMeasure = new List<int>();
+            for (int i = 0; i < notes.Length; i++) {
+                HTSNote note = notes[i];
+                lastMeasure = measure;
+                (measure, beat) = MeasureLength($"{note.beatPerBar}/{note.beatUnit}", measure);
+                int overMeasure = tickSum / measure;
+                tickSum -= measure * overMeasure;
+                if (overMeasure != 0) {
+                    startEndCheck.Add("start");
+                    if (i - 1 >= 0) {
+                        startEndCheck[i - 1] = "end"; 
+                    }
+                } else {
+                    startEndCheck.Add("middle");
+                }
+                int noteCount;
+                if (i == 0 || startEndCheck[i] == "start") {
+                    noteCount = 0;
+                } else {
+                    noteCount = noteCountArray[i - 1] + 1;
+                } noteCountArray.Add(noteCount);
+                int currentTick = tickSum % measure; timeLength.Add((60000.0 / note.bpm) * (note.durationTicks / 480.0));
+                tickInMeasure.Add(currentTick);
+                tickSum += note.durationTicks; 
+            }
+            var result = Enumerable.Repeat("xx", 60).ToArray();
+            result[8] = "1";//number_of_syllables
+            result[9] = "1";//number_of_syllables
+            result[10] = "1";//number_of_syllables
+            result[11] = "1";//number_of_syllables
+            result[12] = "1";//number_of_syllables
+            result[13] = "1";//number_of_syllables
+            result[14] = "1";//number_of_syllables
+            result[15] = "1";//number_of_syllables
+            result[16] = "1";//number_of_syllables
+
+            result[29] = "1";//number_of_syllables
+            result[30] = "1";//number_of_syllables
+            result[31] = "1";//number_of_syllables
+            result[32] = "1";//number_of_syllables
+            result[33] = "1";//number_of_syllables
+            result[34] = "1";//number_of_syllables
+            result[30] = "1";//number_of_syllables
+            result[30] = "1";//number_of_syllables
+            result[30] = "1";//number_of_syllables
+            return result;
+        }
+
+        public string[] g() {
+            var result = Enumerable.Repeat("xx", 2).ToArray();
+            if (prev == null) {
+                return result;
+            } else {
+                result[0] = "";
+                result[1] = "";
+                return result;
+            }
+        }
+
+        public string[] h() {
+            var result = Enumerable.Repeat("xx", 2).ToArray();
+            result[0] = "";
+            result[1] = "";
+            return result;
+        }
+
+        public string[] i() {
+            var result = Enumerable.Repeat("xx", 2).ToArray();
+            if (next == null) {
+                return result;
+            } else {
+                result[0] = "";
+                result[1] = "";
+                return result;
+            }
+        }
+
+        public string[] j() {
+            var result = Enumerable.Repeat("xx", 3).ToArray();
+            result[0] = "1";//number_of_syllables
+            result[1] = "1";//number_of_syllables
+            result[2] = "1";//number_of_syllables
+            return result;
+        }
+
     }
 }

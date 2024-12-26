@@ -9,9 +9,10 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
+using OpenUtau.Core.Util;
+using OpenUtau.Core.Util.nnmnkwii.io.hts;
 using OpenUtau.Plugin.Builtin.EnunuOnnx;
 using OpenUtau.Plugin.Builtin.EnunuOnnx.nnmnkwii.frontend;
-using OpenUtau.Plugin.Builtin.EnunuOnnx.nnmnkwii.io.hts;
 using Serilog;
 
 //This phonemizer is a pure C# implemention of the ENUNU phonemizer,
@@ -280,9 +281,16 @@ namespace OpenUtau.Plugin.Builtin {
 
         //make a HTS Note from given symbols and UNotes
         protected HTSNote makeHtsNote(string[] symbols, IList<Note> group, int startTick) {
+            timeAxis.TickPosToBarBeat(group[0].position, out int bar, out int beat, out int remainingTicks);
             return new HTSNote(
                 symbols: symbols,
                 tone: group[0].tone,
+                beatPerBar: bar,
+                beatUnit: beat,
+                key: 0,
+                lang: string.Empty,
+                accent: string.Empty,
+                bpm: timeAxis.GetBpmAtTick(group[0].position),
                 startms: (int)timeAxis.MsBetweenTickPos(startTick, group[0].position) + paddingMs,
                 endms: (int)timeAxis.MsBetweenTickPos(startTick, group[^1].position + group[^1].duration) + paddingMs,
                 positionTicks: group[0].position,
@@ -473,9 +481,16 @@ namespace OpenUtau.Plugin.Builtin {
             int paddingTicks = timeAxis.MsPosToTickPos(paddingMs);
             var notePhIndex = new List<int> { 1 };//每个音符的第一个音素在音素列表上对应的位置
             var phAlignPoints = new List<Tuple<int, double>>();//音素对齐的位置，Ms，绝对时间
+            timeAxis.TickPosToBarBeat(phrase[0][0].position, out int bar, out int beat, out int remainingTicks);
             HTSNote PaddingNote = new HTSNote(
-                symbols: new string[] { "sil" },
+                symbols: new string[] { defaultPause },
+                beatPerBar: bar,
+                beatUnit: beat,
+                key: 0,
+                bpm: 0,
                 tone: 0,
+                lang: string.Empty,
+                accent: string.Empty,
                 startms: 0,
                 endms: paddingMs,
                 positionTicks: phrase[0][0].position - paddingTicks,
