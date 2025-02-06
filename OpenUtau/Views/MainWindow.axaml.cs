@@ -191,6 +191,26 @@ namespace OpenUtau.App.Views {
             DocManager.Inst.EndUndoGroup();
         }
 
+        private void AddBookMarkChange(int bar) {
+            var project = DocManager.Inst.Project;
+            var timeSig = project.timeAxis.TimeSignatureAtBar(bar);
+            var dialog = new TimeSignatureDialog(timeSig.beatPerBar, timeSig.beatUnit);
+            dialog.OnOk = (beatPerBar, beatUnit) => {
+                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.ExecuteCmd(new AddTimeSigCommand(
+                    project, bar, dialog.BeatPerBar, dialog.BeatUnit));
+                DocManager.Inst.EndUndoGroup();
+            };
+            dialog.ShowDialog(this);
+        }
+
+        private void DelBookMarkChange(int bar) {
+            var project = DocManager.Inst.Project;
+            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.ExecuteCmd(new DelTimeSigCommand(project, bar));
+            DocManager.Inst.EndUndoGroup();
+        }
+
         void OnMenuNew(object sender, RoutedEventArgs args) => NewProject();
         async void NewProject() {
             if (!DocManager.Inst.ChangesSaved && !await AskIfSaveAndContinue()) {
