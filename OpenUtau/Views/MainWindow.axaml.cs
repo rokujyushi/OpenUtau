@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reactive;
-using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -185,26 +184,6 @@ namespace OpenUtau.App.Views {
         }
 
         private void DelTimeSigChange(int bar) {
-            var project = DocManager.Inst.Project;
-            DocManager.Inst.StartUndoGroup();
-            DocManager.Inst.ExecuteCmd(new DelTimeSigCommand(project, bar));
-            DocManager.Inst.EndUndoGroup();
-        }
-
-        private void AddBookMarkChange(int bar) {
-            var project = DocManager.Inst.Project;
-            var timeSig = project.timeAxis.TimeSignatureAtBar(bar);
-            var dialog = new TimeSignatureDialog(timeSig.beatPerBar, timeSig.beatUnit);
-            dialog.OnOk = (beatPerBar, beatUnit) => {
-                DocManager.Inst.StartUndoGroup();
-                DocManager.Inst.ExecuteCmd(new AddTimeSigCommand(
-                    project, bar, dialog.BeatPerBar, dialog.BeatUnit));
-                DocManager.Inst.EndUndoGroup();
-            };
-            dialog.ShowDialog(this);
-        }
-
-        private void DelBookMarkChange(int bar) {
             var project = DocManager.Inst.Project;
             DocManager.Inst.StartUndoGroup();
             DocManager.Inst.ExecuteCmd(new DelTimeSigCommand(project, bar));

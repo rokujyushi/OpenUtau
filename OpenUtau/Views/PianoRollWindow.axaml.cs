@@ -161,8 +161,50 @@ namespace OpenUtau.App.Views {
             noteDefaultsCommand = ReactiveCommand.Create(() => {
                 EditNoteDefaults();
             });
+            ViewModel.AddBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => AddBookMark(tuple.Item1,tuple.Item2));
+            ViewModel.ChangeBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => ChangeBookMark(tuple.Item1, tuple.Item2));
+            ViewModel.DelBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => DelBookMark(tuple.Item1, tuple.Item2));
 
             DocManager.Inst.AddSubscriber(this);
+        }
+
+        private void AddBookMark(string name,int bar) {
+            var project = ViewModel.NotesViewModel.Project;
+            var part = project.voiceParts.First(part => part.name == name);
+            var num = part.bookmarks.Count();
+            var dialog = new TypeInDialog();
+            dialog.Title = "BookMark";
+            dialog.SetText(string.Empty);
+            dialog.onFinish = s => {
+                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(project, part, bar, s, num, name));
+                DocManager.Inst.EndUndoGroup();
+            };
+            dialog.ShowDialog(this);
+        }
+
+        private void ChangeBookMark(string name, int bar) {
+            var project = ViewModel.NotesViewModel.Project;
+            var part = project.voiceParts.First(part => part.name == name);
+            var bookmark = part.BookmarkAtPartNameAndBar(name, bar);
+            var dialog = new TypeInDialog();
+            dialog.Title = "BookMark";
+            dialog.SetText(bookmark.bookmarkStr);
+            dialog.onFinish = s => {
+                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(project,part, bookmark.barPosition, s,bookmark.bookmarkNum, bookmark.bookmarkPartName));
+                DocManager.Inst.EndUndoGroup();
+            };
+            dialog.ShowDialog(this);
+        }
+
+        private void DelBookMark(string name, int bar) {
+            var project = ViewModel.NotesViewModel.Project;
+            var part = project.voiceParts.First(part => part.name == name);
+            var bookmark = part.BookmarkAtPartNameAndBar(name, bar);
+            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.ExecuteCmd(new DelBookMarkCommand(project,part, bar));
+            DocManager.Inst.EndUndoGroup();
         }
 
         public void WindowDeactivated(object sender, EventArgs args) {
@@ -458,6 +500,10 @@ namespace OpenUtau.App.Views {
                 ViewModel.NotesViewModel.PointToLineTick(point.Position, out int left, out int right);
                 int tick = left + ViewModel.NotesViewModel.Part?.position ?? 0;
                 ViewModel.PlaybackViewModel?.MovePlayPos(tick);
+            } else if (point.Properties.IsRightButtonPressed) {
+                ViewModel.NotesViewModel.PointToLineTick(point.Position, out int left, out int right);
+                int tick = left + ViewModel.NotesViewModel.Part?.position ?? 0;
+                ViewModel.RefreshTimelineContextMenu(tick);
             }
             LyricBox?.EndEdit();
         }

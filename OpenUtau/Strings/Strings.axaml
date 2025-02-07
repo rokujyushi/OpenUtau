@@ -20,8 +20,11 @@
   <system:String x:Key="context.pitch.pointsnapprev">Snap to previous note</system:String>
   <system:String x:Key="context.timeline.addtempo">Add tempo change at {0}</system:String>
   <system:String x:Key="context.timeline.addtimesig">Add time signature change</system:String>
+  <system:String x:Key="context.timeline.addbookmarkcmd">Add a bookmark</system:String>
   <system:String x:Key="context.timeline.deltempo">Delete tempo change at {0}</system:String>
   <system:String x:Key="context.timeline.deltimesig">Delete time signature change</system:String>
+  <system:String x:Key="context.timeline.delbookmarkcmd">Delete a bookmark</system:String>
+  <system:String x:Key="context.timeline.changebookmarkcmd">Change a bookmark</system:String>
 
   <system:String x:Key="debug.clear">Clear</system:String>
   <system:String x:Key="debug.copylog">Copy Log</system:String>

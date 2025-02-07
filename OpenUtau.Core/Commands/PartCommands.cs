@@ -125,7 +125,7 @@ namespace OpenUtau.Core {
     }
 
     public class DelBookMarkCommand : AddBookMarkCommand {
-        public DelBookMarkCommand(UProject project, UPart part, UPart newPart, int bar) : base(project, part) {
+        public DelBookMarkCommand(UProject project, UPart part, int bar) : base(project, part) {
             this.bar = bar;
             var bookMark = (part as UVoicePart).bookmarks.Find(bookmark => bookmark.barPosition > bar);
             bookmarkStr = bookMark.bookmarkStr;

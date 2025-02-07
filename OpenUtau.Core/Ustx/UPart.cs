@@ -57,7 +57,7 @@ namespace OpenUtau.Core.Ustx {
         [YamlIgnore] public bool PhonemesUpToDate => notesTimestamp == phonemesTimestamp;
         [YamlIgnore] public ISignalSource Mix => mix;
 
-        public List<UBookmark> bookmarks = new List<UBookmark>();
+        [YamlIgnore] public List<UBookmark> bookmarks = new List<UBookmark>();
 
         public override string DisplayName => name;
         public override int Duration { get => duration; set => duration = value; }
@@ -263,6 +263,26 @@ namespace OpenUtau.Core.Ustx {
             }
         }
 
+        public UBookmark BookmarkAtPartNameAndBar(string partName, int bar) {
+            var bookmark = bookmarks.First(mark => (mark.barPosition == bar && mark.bookmarkPartName == partName) || (mark.barPosition > bar && mark.bookmarkPartName == partName)); // TODO: optimize
+            return new UBookmark {
+                barPosition = bookmark.barPosition,
+                bookmarkStr = bookmark.bookmarkStr,
+                bookmarkNum = bookmark.bookmarkNum,
+                bookmarkPartName = bookmark.bookmarkPartName,
+            };
+        }
+
+        public UBookmark BookmarkAtNum(int num) {
+            var bookmark = bookmarks.First(mark => mark.bookmarkNum == num || (mark.bookmarkNum >= num && mark.bookmarkNum <= num)); // TODO: optimize
+            return new UBookmark {
+                barPosition = bookmark.barPosition,
+                bookmarkStr = bookmark.bookmarkStr,
+                bookmarkNum = bookmark.bookmarkNum,
+                bookmarkPartName = bookmark.bookmarkPartName,
+            };
+        }
+
         public override UPart Clone() {
             return new UVoicePart() {
                 name = name,
@@ -427,6 +447,7 @@ namespace OpenUtau.Core.Ustx {
             this.bookmarkNum = bookmarkNum;
             this.bookmarkPartName = bookmarkPartName;
         }
+
         public override string ToString() => $"{bookmarkNum}:{bookmarkStr}@bar{barPosition}";
     }
 

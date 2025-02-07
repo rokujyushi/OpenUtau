@@ -48,9 +48,6 @@ namespace OpenUtau.App.ViewModels {
         public ReactiveCommand<int, Unit>? DelTempoChangeCmd { get; set; }
         public ReactiveCommand<int, Unit>? AddTimeSigChangeCmd { get; set; }
         public ReactiveCommand<int, Unit>? DelTimeSigChangeCmd { get; set; }
-        public ReactiveCommand<int, Unit>? AddLabelChangeCmd { get; set; }
-        public ReactiveCommand<int, Unit>? ChangeLabelChangeCmd { get; set; }
-        public ReactiveCommand<int, Unit>? DelLabelChangeCmd { get; set; }
 
         private ObservableCollectionExtended<MenuItemViewModel> openRecent
             = new ObservableCollectionExtended<MenuItemViewModel>();
