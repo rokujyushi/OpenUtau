@@ -89,9 +89,9 @@ namespace OpenUtau.App.ViewModels {
         public ReactiveCommand<PitchPointHitInfo, Unit> PitSnapCommand { get; set; }
         public ReactiveCommand<PitchPointHitInfo, Unit> PitDelCommand { get; set; }
         public ReactiveCommand<PitchPointHitInfo, Unit> PitAddCommand { get; set; }
-        public ReactiveCommand<Tuple<string, int>, Unit>? AddBookMarkCmd { get; set; }
-        public ReactiveCommand<Tuple<string, int>, Unit>? ChangeBookMarkCmd { get; set; }
-        public ReactiveCommand<Tuple<string, int>, Unit>? DelBookMarkCmd { get; set; }
+        public ReactiveCommand<int, Unit>? AddBookMarkCmd { get; set; }
+        public ReactiveCommand<int, Unit>? ChangeBookMarkCmd { get; set; }
+        public ReactiveCommand<int, Unit>? DelBookMarkCmd { get; set; }
 
         private ReactiveCommand<Classic.Plugin, Unit> legacyPluginCommand;
 
@@ -176,28 +176,25 @@ namespace OpenUtau.App.ViewModels {
 
         public void RefreshTimelineContextMenu(int tick) {
             TimelineContextMenuItems.Clear();
-            var project = NotesViewModel.Project;
-            var timeAxis = project.timeAxis;
-            timeAxis.TickPosToBarBeat(tick, out int bar, out int beat, out int _);
             var part = NotesViewModel.Part;
             if (part != null) {
-                var bookmark = part.BookmarkAtPartNameAndBar(part.name, bar);
-                if (bookmark.barPosition != bar) {
+                var bookmark = part.bookmarks.LastOrDefault(b => b.position == tick);
+                if (bookmark == null) {
                     TimelineContextMenuItems.Add(new MenuItemViewModel {
                         Header = ThemeManager.GetString("context.timeline.addbookmarkcmd"),
                         Command = AddBookMarkCmd,
-                        CommandParameter = new Tuple<string,int>(part.name, bar),
+                        CommandParameter = tick,
                     });
                 } else {
                     TimelineContextMenuItems.Add(new MenuItemViewModel {
                         Header = ThemeManager.GetString("context.timeline.changebookmarkcmd"),
                         Command = ChangeBookMarkCmd,
-                        CommandParameter = new Tuple<string, int>(part.name, bar),
+                        CommandParameter = tick,
                     });
                     TimelineContextMenuItems.Add(new MenuItemViewModel {
                         Header = ThemeManager.GetString("context.timeline.delbookmarkcmd"),
                         Command = DelBookMarkCmd,
-                        CommandParameter = new Tuple<string, int>(part.name, bar),
+                        CommandParameter = tick,
                     });
                 }
             }

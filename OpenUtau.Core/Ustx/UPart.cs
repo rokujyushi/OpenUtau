@@ -57,7 +57,7 @@ namespace OpenUtau.Core.Ustx {
         [YamlIgnore] public bool PhonemesUpToDate => notesTimestamp == phonemesTimestamp;
         [YamlIgnore] public ISignalSource Mix => mix;
 
-        [YamlIgnore] public List<UBookmark> bookmarks = new List<UBookmark>();
+        public List<UBookmark> bookmarks = new List<UBookmark>();
 
         public override string DisplayName => name;
         public override int Duration { get => duration; set => duration = value; }
@@ -263,23 +263,21 @@ namespace OpenUtau.Core.Ustx {
             }
         }
 
-        public UBookmark BookmarkAtPartNameAndBar(string partName, int bar) {
-            var bookmark = bookmarks.First(mark => (mark.barPosition == bar && mark.bookmarkPartName == partName) || (mark.barPosition > bar && mark.bookmarkPartName == partName)); // TODO: optimize
+        public UBookmark BookmarkAtPartBar(int position) {
+            var bookmark = bookmarks.Find(mark => (mark.position == position)); // TODO: optimize
             return new UBookmark {
-                barPosition = bookmark.barPosition,
-                bookmarkStr = bookmark.bookmarkStr,
-                bookmarkNum = bookmark.bookmarkNum,
-                bookmarkPartName = bookmark.bookmarkPartName,
+                position = bookmark.position,
+                text = bookmark.text,
+                index = bookmark.index
             };
         }
 
         public UBookmark BookmarkAtNum(int num) {
-            var bookmark = bookmarks.First(mark => mark.bookmarkNum == num || (mark.bookmarkNum >= num && mark.bookmarkNum <= num)); // TODO: optimize
+            var bookmark = bookmarks.Find(mark => mark.index == num || (mark.index >= num && mark.index <= num)); // TODO: optimize
             return new UBookmark {
-                barPosition = bookmark.barPosition,
-                bookmarkStr = bookmark.bookmarkStr,
-                bookmarkNum = bookmark.bookmarkNum,
-                bookmarkPartName = bookmark.bookmarkPartName,
+                position = bookmark.position,
+                text = bookmark.text,
+                index = bookmark.index
             };
         }
 
@@ -435,20 +433,17 @@ namespace OpenUtau.Core.Ustx {
     }
 
     public class UBookmark {
-        public int barPosition;
-        public string bookmarkStr;
-        public int bookmarkNum;
-        public string bookmarkPartName;
-
-        public UBookmark() { }
-        public UBookmark(int barPosition, string bookmarkStr, int bookmarkNum, string bookmarkPartName) {
-            this.barPosition = barPosition;
-            this.bookmarkStr = bookmarkStr;
-            this.bookmarkNum = bookmarkNum;
-            this.bookmarkPartName = bookmarkPartName;
+        public int position;
+        public string text;
+        public int index;
+        public UBookmark() {}
+        public UBookmark(int position, string text, int index) {
+            this.position = position;
+            this.text = text;
+            this.index = index;
         }
 
-        public override string ToString() => $"{bookmarkNum}:{bookmarkStr}@bar{barPosition}";
+        public override string ToString() => $"{index}:{text}@position{position}";
     }
 
 }

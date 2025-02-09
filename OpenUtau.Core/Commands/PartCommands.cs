@@ -1,6 +1,7 @@
 ﻿using System.Linq;
 using System;
 using OpenUtau.Core.Ustx;
+using OpenUtau.Core.Format.MusicXMLSchema;
 
 namespace OpenUtau.Core {
     public abstract class PartCommand : UCommand {
@@ -87,25 +88,22 @@ namespace OpenUtau.Core {
 
     public class AddBookMarkCommand : PartCommand {
         protected UVoicePart part;
-        protected int bar;
-        protected string bookmarkStr;
-        protected int bookmarkNum;
-        protected string bookmarkPartName;
-        public AddBookMarkCommand(UProject project, UVoicePart part, int bar, string bookmarkStr, int bookmarkNum, string bookmarkPartName) : base(project, part) {
+        protected int tick;
+        protected string text;
+        protected int index;
+        public AddBookMarkCommand(UProject project, UVoicePart part, int tick, string text, int index) : base(project, part) {
             this.part = part;
-            this.bar = bar;
-            this.bookmarkStr = bookmarkStr;
-            this.bookmarkNum = bookmarkNum;
-            this.bookmarkPartName = bookmarkPartName;
+            this.tick = tick;
+            this.text = text;
+            this.index = index;
         }
         protected AddBookMarkCommand(UProject project, UPart part) : base(project, part) { }
         public override void Execute() {
-            int index = part.bookmarks.FindIndex(bookmark => bookmark.barPosition > bar);
+            int index = part.bookmarks.FindIndex(bookmark => bookmark.position == tick);
             var bookMark = new UBookmark {
-                barPosition = bar,
-                bookmarkStr = bookmarkStr,
-                bookmarkNum = bookmarkNum,
-                bookmarkPartName = bookmarkPartName
+                position = tick,
+                text = text,
+                index = part.bookmarks.Count() + 1
             };
             if (index >= 0) {
                 part.bookmarks.Insert(index - 1, bookMark);
@@ -114,23 +112,26 @@ namespace OpenUtau.Core {
             }
         }
         public override void Unexecute() {
-            int index = project.parts.OfType<UVoicePart>().SelectMany(x => x.bookmarks).ToList().Find(bookmark => bookmark.barPosition > bar).bookmarkNum;
+            int index = part.bookmarks.FindIndex(bookmark => bookmark.position == tick);
             if (index >= 0) {
                 part.bookmarks.RemoveAt(index);
             } else {
                 throw new Exception("Cannot remove non-exist time signature change");
             }
         }
-        public override string ToString() => $"Add bookmark change {bookmarkPartName}_{bookmarkNum}:{bookmarkStr} at bar {bar}";
+        public override string ToString() => $"Add bookmark change {part.name}_{index}:{text} at position {tick}";
     }
 
     public class DelBookMarkCommand : AddBookMarkCommand {
-        public DelBookMarkCommand(UProject project, UPart part, int bar) : base(project, part) {
-            this.bar = bar;
-            var bookMark = (part as UVoicePart).bookmarks.Find(bookmark => bookmark.barPosition > bar);
-            bookmarkStr = bookMark.bookmarkStr;
-            bookmarkNum = bookMark.bookmarkNum;
-            bookmarkPartName = bookMark.bookmarkPartName;
+        public DelBookMarkCommand(UProject project, UPart part, int tick) : base(project, part) {
+            if(part == null) {
+                return;
+            }
+            this.part = (part as UVoicePart);
+            this.tick = tick;
+            var bookMark = this.part.bookmarks.Find(bookmark => bookmark.position >= tick);
+            text = bookMark.text;
+            index = bookMark.index;
         }
         public override void Execute() {
             base.Unexecute();
@@ -138,7 +139,7 @@ namespace OpenUtau.Core {
         public override void Unexecute() {
             base.Execute();
         }
-        public override string ToString() => $"Del bookmark change {bookmarkPartName}_{bookmarkNum}:{bookmarkStr} at bar {bar}";
+        public override string ToString() => $"Del bookmark change {part.name}_{index}:{text} at position {tick}";
     }
 
 }

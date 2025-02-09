@@ -79,6 +79,8 @@ namespace OpenUtau.App.ViewModels {
                 cmd is DelTempoChangeCommand ||
                 cmd is AddTimeSigCommand ||
                 cmd is DelTimeSigCommand ||
+                cmd is AddBookMarkCommand ||
+                cmd is DelBookMarkCommand ||
                 cmd is KeyCommand ||
                 cmd is LoadProjectNotification) {
                 this.RaisePropertyChanged(nameof(BeatPerBar));

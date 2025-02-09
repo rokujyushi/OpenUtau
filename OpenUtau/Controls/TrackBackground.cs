@@ -136,9 +136,6 @@ namespace OpenUtau.App.Controls {
         }
 
         private bool IsAltTrack(int track) {
-            if (!IsPianoRoll) {
-                return track % 2 == 1;
-            }
             int tone = ViewConstants.MaxTone - 1 - track;
             if (tone < 0) {
                 return false;

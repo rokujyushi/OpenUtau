@@ -161,49 +161,68 @@ namespace OpenUtau.App.Views {
             noteDefaultsCommand = ReactiveCommand.Create(() => {
                 EditNoteDefaults();
             });
-            ViewModel.AddBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => AddBookMark(tuple.Item1,tuple.Item2));
-            ViewModel.ChangeBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => ChangeBookMark(tuple.Item1, tuple.Item2));
-            ViewModel.DelBookMarkCmd = ReactiveCommand.Create<Tuple<string, int>>(tuple => DelBookMark(tuple.Item1, tuple.Item2));
+            ViewModel.AddBookMarkCmd = ReactiveCommand.Create<int>(i => AddBookMark(i));
+            ViewModel.ChangeBookMarkCmd = ReactiveCommand.Create<int>(i => ChangeBookMark(i));
+            ViewModel.DelBookMarkCmd = ReactiveCommand.Create<int>(i => DelBookMark(i));
 
             DocManager.Inst.AddSubscriber(this);
         }
 
-        private void AddBookMark(string name,int bar) {
-            var project = ViewModel.NotesViewModel.Project;
-            var part = project.voiceParts.First(part => part.name == name);
+        private void AddBookMark(int position) {
+            var NotesVm = ViewModel?.NotesViewModel;
+            if (NotesVm == null || NotesVm.Part == null || NotesVm.Part.bookmarks == null) {
+                return;
+            }
+            var part = NotesVm.Part;
             var num = part.bookmarks.Count();
+            var str = string.Empty;
             var dialog = new TypeInDialog();
             dialog.Title = "BookMark";
             dialog.SetText(string.Empty);
             dialog.onFinish = s => {
                 DocManager.Inst.StartUndoGroup();
-                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(project, part, bar, s, num, name));
+                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(NotesVm.Project, part, position, s, num));
                 DocManager.Inst.EndUndoGroup();
             };
             dialog.ShowDialog(this);
         }
 
-        private void ChangeBookMark(string name, int bar) {
-            var project = ViewModel.NotesViewModel.Project;
-            var part = project.voiceParts.First(part => part.name == name);
-            var bookmark = part.BookmarkAtPartNameAndBar(name, bar);
+        private void ChangeBookMark(int position) {
+            var NotesVm = ViewModel?.NotesViewModel;
+            if (NotesVm == null || NotesVm.Part == null || NotesVm.Part.bookmarks == null) {
+                return;
+            }
+            var part = NotesVm.Part;
+            var bookmark = part.bookmarks.LastOrDefault(b => b.position == position);
+            if (bookmark == null) {
+                return;
+            }
+            var str = bookmark.text;
+            var index = bookmark.index;
             var dialog = new TypeInDialog();
             dialog.Title = "BookMark";
-            dialog.SetText(bookmark.bookmarkStr);
+            dialog.SetText(bookmark.text);
             dialog.onFinish = s => {
                 DocManager.Inst.StartUndoGroup();
-                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(project,part, bookmark.barPosition, s,bookmark.bookmarkNum, bookmark.bookmarkPartName));
+                DocManager.Inst.ExecuteCmd(new DelBookMarkCommand(NotesVm.Project, part, position));
+                DocManager.Inst.ExecuteCmd(new AddBookMarkCommand(NotesVm.Project, part, position, s, index));
                 DocManager.Inst.EndUndoGroup();
             };
             dialog.ShowDialog(this);
         }
 
-        private void DelBookMark(string name, int bar) {
-            var project = ViewModel.NotesViewModel.Project;
-            var part = project.voiceParts.First(part => part.name == name);
-            var bookmark = part.BookmarkAtPartNameAndBar(name, bar);
+        private void DelBookMark(int position) {
+            var NotesVm = ViewModel?.NotesViewModel;
+            if (NotesVm == null || NotesVm.Part == null || NotesVm.Part.bookmarks == null) {
+                return;
+            }
+            var part = NotesVm.Part;
+            var bookmark = part.bookmarks.LastOrDefault(b => b.position == position);
+            if (bookmark == null) {
+                return;
+            }
             DocManager.Inst.StartUndoGroup();
-            DocManager.Inst.ExecuteCmd(new DelBookMarkCommand(project,part, bar));
+            DocManager.Inst.ExecuteCmd(new DelBookMarkCommand(NotesVm.Project, part, position));
             DocManager.Inst.EndUndoGroup();
         }
 
