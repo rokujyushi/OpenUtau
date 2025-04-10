@@ -10,6 +10,7 @@
     <PackageReference Include="Avalonia.iOS" Version="11.2.4" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\OpenUtau\OpenUtau.csproj" />
     <ProjectReference Include="..\OpenUtau.Core\OpenUtau.Core.csproj" />
     <ProjectReference Include="..\OpenUtau.Plugin.Builtin\OpenUtau.Plugin.Builtin.csproj" />
   </ItemGroup>
