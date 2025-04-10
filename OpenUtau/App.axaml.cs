@@ -30,6 +30,8 @@ namespace OpenUtau.App {
             Log.Information("Framework initialization completed.");
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop) {
                 desktop.MainWindow = new SplashWindow();
+            } else if (ApplicationLifetime is ISingleViewApplicationLifetime singleViewPlatform) {
+                singleViewPlatform.MainView = new SplashWindow();
             }
 
             base.OnFrameworkInitializationCompleted();
