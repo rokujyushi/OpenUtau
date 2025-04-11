@@ -6,8 +6,8 @@
   </item>
 
   <item android:drawable="@drawable/icon"
-        android:width="120dp"
-        android:height="120dp"
+        android:width="200dp"
+        android:height="200dp"
         android:gravity="center" />
 
 </layer-list>
