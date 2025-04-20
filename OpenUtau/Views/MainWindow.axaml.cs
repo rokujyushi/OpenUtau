@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Reactive;
-using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -54,7 +53,7 @@ namespace OpenUtau.App.Views {
             Log.Information("Initialized main window component.");
             DataContext = viewModel = new MainWindowViewModel();
 
-            viewModel.InitProject();
+            viewModel.NewProject();
             viewModel.AddTempoChangeCmd = ReactiveCommand.Create<int>(tick => AddTempoChange(tick));
             viewModel.DelTempoChangeCmd = ReactiveCommand.Create<int>(tick => DelTempoChange(tick));
             viewModel.AddTimeSigChangeCmd = ReactiveCommand.Create<int>(bar => AddTimeSigChange(bar));
@@ -87,6 +86,10 @@ namespace OpenUtau.App.Views {
                 () => (Application.Current?.ApplicationLifetime as IControlledApplicationLifetime)?.Shutdown(),
                 TaskScheduler.FromCurrentSynchronizationContext());
             Log.Information("Created main window.");
+        }
+
+        public void InitProject() {
+            viewModel.InitProject(this);
         }
 
         void OnEditTimeSignature(object sender, PointerPressedEventArgs args) {
@@ -212,7 +215,8 @@ namespace OpenUtau.App.Views {
                 FilePicker.VSQX,
                 FilePicker.UST,
                 FilePicker.MIDI,
-                FilePicker.UFDATA);
+                FilePicker.UFDATA,
+                FilePicker.MUSICXML);
             if (files == null || files.Length == 0) {
                 return;
             }
@@ -306,7 +310,8 @@ namespace OpenUtau.App.Views {
                 FilePicker.VSQX,
                 FilePicker.UST,
                 FilePicker.MIDI,
-                FilePicker.UFDATA);
+                FilePicker.UFDATA,
+                FilePicker.MUSICXML);
             if (files == null || files.Length == 0) {
                 return;
             }
@@ -659,6 +664,12 @@ namespace OpenUtau.App.Views {
             }
         }
 
+        void OnMenuFullScreen(object sender, RoutedEventArgs args) {
+            this.WindowState = this.WindowState == WindowState.FullScreen
+                ? WindowState.Normal
+                : WindowState.FullScreen;
+        }
+
         void OnMenuClearCache(object sender, RoutedEventArgs args) {
             Task.Run(() => {
                 DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, "Clearing cache..."));
@@ -764,6 +775,9 @@ namespace OpenUtau.App.Views {
                             viewModel.PlaybackViewModel.MovePlayPos(endTick);
                         }
                         break;
+                    case Key.F11:
+                        OnMenuFullScreen(this, new RoutedEventArgs());
+                        break;
                     default:
                         args.Handled = false;
                         break;
@@ -840,8 +854,8 @@ namespace OpenUtau.App.Views {
                 return;
             }
             string file = storageItem.Path.LocalPath;
-            var ext = Path.GetExtension(file);
-            if (ext == ".ustx" || ext == ".ust" || ext == ".vsqx" || ext == ".ufdata") {
+            var ext = Path.GetExtension(file).ToLower();
+            if (ext == ".ustx" || ext == ".ust" || ext == ".vsqx" || ext == ".ufdata" || ext == ".musicxml") {
                 if (!DocManager.Inst.ChangesSaved && !await AskIfSaveAndContinue()) {
                     return;
                 }
@@ -1307,6 +1321,8 @@ namespace OpenUtau.App.Views {
                     PathManager.Inst.ClearCache();
                     Log.Information("Cache cleared.");
                 }
+                Preferences.Default.RecoveryPath = string.Empty;
+                Preferences.Save();
                 return;
             }
             e.Cancel = true;

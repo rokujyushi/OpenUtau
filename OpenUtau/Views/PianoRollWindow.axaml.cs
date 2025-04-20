@@ -51,7 +51,7 @@ namespace OpenUtau.App.Views {
                 if (NotesVm == null || NotesVm.Part == null) {
                     return;
                 }
-                try{
+                try {
                     if (edit.IsAsync) {
                         var mainWindow =
                             (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)
@@ -66,10 +66,10 @@ namespace OpenUtau.App.Views {
                                         messageBox.SetText($"{name}: {current} / {total}");
                                     }, cancellationToken);
                             },
-                            (Task t)=>{
-                                var e=t.Exception;
-                                if(t.IsFaulted && e != null){
-                                    if(e!=null){
+                            (Task t) => {
+                                var e = t.Exception;
+                                if (t.IsFaulted && e != null) {
+                                    if (e != null) {
                                         Log.Error(e, $"Failed to run Editing Macro");
                                         var customEx = new MessageCustomizableException("Failed to run editing macro", "<translate:errors.failed.runeditingmacro>", e);
                                         DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(customEx));
@@ -96,8 +96,6 @@ namespace OpenUtau.App.Views {
                 new RemoveTailNote("R", "pianoroll.menu.notes.removetailrest"),
                 new Transpose(12, "pianoroll.menu.notes.octaveup"),
                 new Transpose(-12, "pianoroll.menu.notes.octavedown"),
-                new QuantizeNotes(15),
-                new QuantizeNotes(30),
                 new AutoLegato(),
                 new FixOverlap(),
                 new BakePitch(),
@@ -141,6 +139,12 @@ namespace OpenUtau.App.Views {
                 Header = ThemeManager.GetString("pianoroll.menu.notes.addbreath"),
                 Command = ReactiveCommand.Create(() => {
                     AddBreathNote();
+                })
+            });
+            ViewModel.NoteBatchEdits.Insert(8, new MenuItemViewModel() {
+                Header = ThemeManager.GetString("pianoroll.menu.notes.quantize"),
+                Command = ReactiveCommand.Create(() => {
+                    QuantizeNotes();
                 })
             });
             ViewModel.NoteBatchEdits.Add(new MenuItemViewModel() {
@@ -225,6 +229,11 @@ namespace OpenUtau.App.Views {
             ViewModel.RaisePropertyChanged(nameof(ViewModel.UseTrackColor));
             MessageBus.Current.SendMessage(new PianorollRefreshEvent("TrackColor"));
         }
+        void OnMenuFullScreen(object sender, RoutedEventArgs args) {
+            this.WindowState = this.WindowState == WindowState.FullScreen
+                ? WindowState.Normal
+                : WindowState.FullScreen;
+        }
         void OnMenuDegreeStyle(object sender, RoutedEventArgs args) {
             if (sender is MenuItem menu && int.TryParse(menu.Tag?.ToString(), out int tag)) {
                 Preferences.Default.DegreeStyle = tag;
@@ -262,7 +271,7 @@ namespace OpenUtau.App.Views {
                 UOto? oto = null;
                 if (ViewModel.NotesViewModel.Part != null) {
                     singer = ViewModel.NotesViewModel.Project.tracks[ViewModel.NotesViewModel.Part.trackNo].Singer;
-                    if(!ViewModel.NotesViewModel.Selection.IsEmpty && ViewModel.NotesViewModel.Part.phonemes.Count() > 0) {
+                    if (!ViewModel.NotesViewModel.Selection.IsEmpty && ViewModel.NotesViewModel.Part.phonemes.Count() > 0) {
                         oto = ViewModel.NotesViewModel.Part.phonemes.First(p => p.Parent == ViewModel.NotesViewModel.Selection.First()).oto;
                     }
                 }
@@ -351,6 +360,15 @@ namespace OpenUtau.App.Views {
             };
             dialog.SetText("br");
             dialog.ShowDialog(this);
+        }
+
+        void QuantizeNotes() {
+            var notesVM = ViewModel.NotesViewModel;
+            if (notesVM.Part == null) {
+                return;
+            }
+            var edit = new QuantizeNotes(notesVM.Project.resolution * 4 / notesVM.SnapDiv);
+            edit.Run(notesVM.Project, notesVM.Part, notesVM.Selection.ToList(), DocManager.Inst);
         }
 
         void LengthenCrossfade() {
@@ -731,7 +749,7 @@ namespace OpenUtau.App.Views {
             if (ViewModel?.NotesViewModel?.HitTest == null) {
                 return;
             }
-            if(((ViewModel.NotesViewModel.DrawPitchTool || ViewModel.NotesViewModel.DrawLinePitchTool || ViewModel.NotesViewModel.OverwritePitchTool) && args.KeyModifiers != cmdKey) || ViewModel.NotesViewModel.EraserTool) {
+            if (((ViewModel.NotesViewModel.DrawPitchTool || ViewModel.NotesViewModel.DrawLinePitchTool || ViewModel.NotesViewModel.OverwritePitchTool) && args.KeyModifiers != cmdKey) || ViewModel.NotesViewModel.EraserTool) {
                 Cursor = null;
                 return;
             }
@@ -1022,6 +1040,35 @@ namespace OpenUtau.App.Views {
             KeyMenu.Open();
         }
 
+        bool MoveToNextPart(bool next) {
+            var notesVm = ViewModel.NotesViewModel;
+            var playVm = ViewModel.PlaybackViewModel;
+            if (notesVm?.Part == null || playVm == null) {
+                return false;
+            }
+            // tick is the center of NotesCanvas
+            var tick = (int)(notesVm.TickOffset + notesVm.Bounds.Width / notesVm.TickWidth / 2 + notesVm.Part.position);
+            var parts = notesVm.Project.parts
+                .Where(part => part is UVoicePart && part.position <= tick && tick <= part.End)
+                .OfType<UVoicePart>()
+                .OrderBy(part => part.trackNo)
+                .ThenBy(part => part.position)
+                .ToArray();
+            if (parts.Length == 0) {
+                return false;
+            }
+            var index = Array.IndexOf(parts, notesVm.Part);
+            index = next ? index + 1 : index - 1;
+            if (parts.Length <= index) {
+                index = 0;
+            } else if (index < 0) {
+                index = parts.Length - 1;
+            }
+            DocManager.Inst.ExecuteCmd(new LoadPartNotification(parts[index], notesVm.Project, tick));
+            AttachExpressions();
+            return true;
+        }
+
         void OnKeyKeyDown(object sender, KeyEventArgs e) {
             if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None) {
                 if (sender is ContextMenu menu && menu.SelectedItem is MenuItemViewModel item) {
@@ -1146,6 +1193,9 @@ namespace OpenUtau.App.Views {
                         return true;
                     }
                     break;
+                case Key.F11:
+                    OnMenuFullScreen(this, new RoutedEventArgs());
+                    break;
                 case Key.Enter:
                     if (isNone) {
                         if (notesVm.Selection.Count == 1) {
@@ -1219,6 +1269,36 @@ namespace OpenUtau.App.Views {
                     }
                     if (isAlt) {
                         expSelector5?.SelectExp();
+                        return true;
+                    }
+                    break;
+                case Key.D6:
+                    if (isAlt) {
+                        expSelector6?.SelectExp();
+                        return true;
+                    }
+                    break;
+                case Key.D7:
+                    if (isAlt) {
+                        expSelector7?.SelectExp();
+                        return true;
+                    }
+                    break;
+                case Key.D8:
+                    if (isAlt) {
+                        expSelector8?.SelectExp();
+                        return true;
+                    }
+                    break;
+                case Key.D9:
+                    if (isAlt) {
+                        expSelector9?.SelectExp();
+                        return true;
+                    }
+                    break;
+                case Key.D0:
+                    if (isAlt) {
+                        expSelector10?.SelectExp();
                         return true;
                     }
                     break;
@@ -1429,6 +1509,7 @@ namespace OpenUtau.App.Views {
                 case Key.End:
                     if (isNone) {
                         playVm.MovePlayPos(notesVm.Part.End);
+                        HScrollBar.Value = HScrollBar.Maximum;
                         return true;
                     }
                     if (isShift) {
@@ -1529,7 +1610,7 @@ namespace OpenUtau.App.Views {
                         return true;
                     }
                     // solo
-                    if(isShift) {
+                    if (isShift) {
                         var track = project.tracks[notesVm.Part.trackNo];
                         MessageBus.Current.SendMessage(new TracksSoloEvent(notesVm.Part.trackNo, !track.Solo, false));
                         return true;
@@ -1593,7 +1674,21 @@ namespace OpenUtau.App.Views {
                         return true;
                     }
                     break;
-                    #endregion
+                #endregion
+                #region move to the next track part
+                case Key.PageUp: {
+                        if (isNone) {
+                            return MoveToNextPart(false);
+                        }
+                    }
+                    break;
+                    case Key.PageDown: {
+                        if (isNone) {
+                            return MoveToNextPart(true);
+                        }
+                    }
+                    break;
+                #endregion
             }
             return false;
         }
@@ -1602,7 +1697,7 @@ namespace OpenUtau.App.Views {
             if (expSelector1 == null) {
                 return;
             }
-            var exps = new ExpSelector[] { expSelector1, expSelector2, expSelector3, expSelector4, expSelector5 };
+            var exps = new ExpSelector[] { expSelector1, expSelector2, expSelector3, expSelector4, expSelector5, expSelector6, expSelector7, expSelector8, expSelector9, expSelector10 };
             exps[DocManager.Inst.Project.expSecondary].SelectExp();
             exps[DocManager.Inst.Project.expPrimary].SelectExp();
         }
