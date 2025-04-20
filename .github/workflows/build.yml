@@ -82,7 +82,6 @@ jobs:
           cd ./DawPlugin
 
           brew install llvm
-          brew install libunwind
           export PATH="/usr/local/opt/llvm/bin:$PATH"
           export LDFLAGS="-L/usr/local/opt/llvm/lib/c++ -L/usr/local/opt/llvm/lib -lunwind -fexperimental-library"
           export CPPFLAGS="-I/usr/local/opt/llvm/include -fexperimental-library"
