@@ -27,7 +27,7 @@ namespace OpenUtau.Core {
                         Directory.Delete(oldCache, true);
                     }
                 } catch { }
-                string command = "pkgutil --pkg-info=com.openutau.installer";
+                string command = "pkgutil --pkg-info=com.openutau.app";
 
                 var process = new Process
                 {
