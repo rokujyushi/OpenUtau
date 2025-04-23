@@ -86,7 +86,8 @@ jobs:
           export CPPFLAGS="-I/usr/local/opt/llvm/include -fexperimental-library"
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
              -DCMAKE_C_COMPILER=/usr/local/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/usr/local/opt/llvm/bin/clang++ \
-             -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library"
+             -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library" \
+             -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64"
           cmake --build build --config Release
 
         if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
