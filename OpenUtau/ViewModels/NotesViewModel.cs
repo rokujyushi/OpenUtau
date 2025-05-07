@@ -536,7 +536,7 @@ namespace OpenUtau.App.ViewModels {
         }
 
         private void LoadTrackColor(UPart? part, UProject? project) {
-            string colorName = "Blue"; // default fallbackB
+            string colorName = "Blue"; // default fallback Blue
 
             if (part != null && project != null && 
                 part.trackNo >= 0 && part.trackNo < project.tracks.Count) {
