@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 
 namespace OpenUtau.Core.Editing {
@@ -145,7 +146,7 @@ namespace OpenUtau.Core.Editing {
 
         public QuantizeNotes(int quantize) {
             this.quantize = quantize;
-            name = $"pianoroll.menu.notes.quantize{quantize}";
+            name = $"pianoroll.menu.notes.quantize";
         }
 
         public void Run(UProject project, UVoicePart part, List<UNote> selectedNotes, DocManager docManager) {
@@ -314,7 +315,11 @@ namespace OpenUtau.Core.Editing {
             Action<int, int> setProgressCallback, CancellationToken cancellationToken) {
             var renderer = project.tracks[part.trackNo].RendererSettings.Renderer;
             if (renderer == null || !renderer.SupportsRenderPitch) {
-                docManager.ExecuteCmd(new ErrorMessageNotification("Not supported"));
+                var e = new MessageCustomizableException(
+                    "Current renderer doesn't support generating pitch curve", 
+                    $"<translate:errors.editing.autopitch.unsupported>",
+                    new Exception());
+                DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(e));
                 return;
             }
             var notes = selectedNotes.Count > 0 ? selectedNotes : part.notes.ToList();
@@ -619,11 +624,7 @@ namespace OpenUtau.Core.Editing {
                 }
             }
             //Clear MOD+ expressions for selected notes
-            foreach (var phoneme in part.phonemes) {
-                if (phoneme.Parent != null && notes.Contains(phoneme.Parent)) {
-                    docManager.ExecuteCmd(new SetPhonemeExpressionCommand(DocManager.Inst.Project, project.tracks[part.trackNo], part, phoneme, "mod+", null));
-                }
-            }
+            docManager.ExecuteCmd(new SetNotesSameExpressionCommand(DocManager.Inst.Project, project.tracks[part.trackNo], part, notes, "mod+", null));
             docManager.EndUndoGroup();
         }
     }
