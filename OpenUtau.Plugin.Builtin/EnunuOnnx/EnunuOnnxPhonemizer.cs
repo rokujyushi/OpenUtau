@@ -10,9 +10,9 @@ using OpenUtau.Api;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
+using OpenUtau.Core.Util.nnmnkwii.frontend;
 using OpenUtau.Core.Util.nnmnkwii.io.hts;
 using OpenUtau.Plugin.Builtin.EnunuOnnx;
-using OpenUtau.Plugin.Builtin.EnunuOnnx.nnmnkwii.frontend;
 using Serilog;
 
 //This phonemizer is a pure C# implemention of the ENUNU phonemizer,
