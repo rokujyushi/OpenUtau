@@ -101,7 +101,7 @@ namespace OpenUtau.Core.Neutrino {
             //return result.ToArray();
         }
 
-        public override string ToString() => Renderers.VOICEVOX;
+        public override string ToString() => Renderers.NEUTRINO;
 
         RenderPitchResult IRenderer.LoadRenderedPitch(RenderPhrase phrase) {
             try {
