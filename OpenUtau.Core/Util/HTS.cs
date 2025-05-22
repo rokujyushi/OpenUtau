@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using YamlDotNet.Core.Tokens;
 
 //This file implement utaupy.hts python library's function
 //https://github.com/oatsu-gh/utaupy/blob/master/utaupy/hts.py
@@ -68,6 +67,8 @@ namespace OpenUtau.Core.Util {
 
     public class HTSPhoneme {
         public string symbol;
+        public string flags = "xx";
+        public bool isRest = true;
 
         //Links to this phoneme's neighbors and parent
         public HTSPhoneme? prev;
@@ -88,6 +89,11 @@ namespace OpenUtau.Core.Util {
 
         public HTSPhoneme(string phoneme, HTSNote note) {
             this.symbol = phoneme;
+            this.parent = note;
+        }
+        public HTSPhoneme(string phoneme, string flags, HTSNote note) {
+            this.symbol = phoneme;
+            this.flags = flags;
             this.parent = note;
         }
 
@@ -136,6 +142,11 @@ namespace OpenUtau.Core.Util {
             result[3] = symbol;
             result[4] = (next == null) ? "xx" : next.symbol;
             result[5] = (afterNext == null) ? "xx" : afterNext.symbol;
+            result[6] = (beforePrev == null) ? "xx" : beforePrev.flags;
+            result[7] = (prev == null) ? "xx" : prev.flags;
+            result[8] = flags;
+            result[9] = (next == null) ? "xx" : next.flags;
+            result[10] = (afterNext == null) ? "xx" : afterNext.flags;
             result[11] = position.ToString();
             result[12] = position_backward.ToString();
             result[13] = distance_from_previous_vowel < 0 ? "xx" : distance_from_previous_vowel.ToString();
@@ -201,6 +212,8 @@ namespace OpenUtau.Core.Util {
         public double key = 0;
         public double bpm = 0;
         public int tone = 0;
+        public bool isSlur = false;
+        public bool isRest = true;
         public string[] symbols;
         public string lang;
         public string accent;
@@ -209,7 +222,7 @@ namespace OpenUtau.Core.Util {
         public HTSNote? next;
         public HTSPhrase parent;
 
-        public HTSNote(string[] symbols, int beatPerBar, int beatUnit, int key, double bpm, int tone, string lang, string accent, int startms, int endms, int positionTicks, int durationTicks) {
+        public HTSNote(string[] symbols, int beatPerBar, int beatUnit, int key, double bpm, int tone, bool isSlur, bool isRest, string lang, string accent, int startms, int endms, int positionTicks, int durationTicks) {
             this.startMs = startms;
             this.endMs = endms;
             this.beatPerBar = beatPerBar;
@@ -217,6 +230,8 @@ namespace OpenUtau.Core.Util {
             this.key = key;
             this.bpm = bpm;
             this.tone = tone;
+            this.isSlur = isSlur;
+            this.isRest = isRest;
             this.lang = lang;
             this.accent = accent;
             this.symbols = symbols;
@@ -259,7 +274,7 @@ namespace OpenUtau.Core.Util {
         }
 
         public string[] e() {
-            var result = Enumerable.Repeat("xx", 60).ToArray();
+            var result = parent.e();
             result[0] = HTS.GetToneName(tone);
             result[1] = HTS.GetOctaveNum(tone);
             result[2] = key.ToString();
@@ -272,6 +287,17 @@ namespace OpenUtau.Core.Util {
             result[18] = indexBackwards <= 0 ? "xx" : indexBackwards.ToString();
             result[19] = ((startMs + 50) / 100).ToString();//position in 100ms
             result[20] = ((startMsBackwards + 50) / 100).ToString();
+            if (prev == null) {
+                result[26] = "0";
+            } else {
+                result[26] = prev.isSlur ? "1" : "0";
+            }
+            if (next == null) {
+                result[26] = "0";
+            } else {
+                result[26] = next.isSlur ? "1" : "0";
+            }
+            result[28] = "n";
             if (this.tone > 0) {
                 result[56] = (prev == null || prev.tone <= 0) ? "p0" : HTS.WriteInt(prev.tone - tone);
                 result[57] = (next == null || next.tone <= 0) ? "p0" : HTS.WriteInt(next.tone - tone);
@@ -299,11 +325,7 @@ namespace OpenUtau.Core.Util {
         }
 
         public string[] g() {
-            if (prev == null) {
-                return Enumerable.Repeat("xx", 2).ToArray();
-            } else {
-                return prev.b();
-            }
+            return parent.g();
         }
 
         public string[] h() {
@@ -320,8 +342,9 @@ namespace OpenUtau.Core.Util {
     }
 
     public class HTSPhrase {
-        public HTSNote[]? prev;
-        public HTSNote[]? next;
+        public HTSPhrase[]? phrases;
+        public HTSPhrase? prev;
+        public HTSPhrase? next;
         public HTSNote[] notes;
 
         public HTSPhrase(HTSNote[] notes) {
@@ -363,10 +386,13 @@ namespace OpenUtau.Core.Util {
         }
 
         public string[] e() {
+            var result = Enumerable.Repeat("xx", 60).ToArray();
             int measure = 1920;
             string beat = "4/4"; // 仮の値
             int lastMeasure = 0;
             int tickSum = 0;
+            int forwardDurTickSum = 0;
+            int backwardDurTickSum = 0;
             List<string> startEndCheck = new List<string>();
             List<int> noteCountArray = new List<int>();
             List<double> timeLength = new List<double>();
@@ -393,9 +419,32 @@ namespace OpenUtau.Core.Util {
                 } noteCountArray.Add(noteCount);
                 int currentTick = tickSum % measure; timeLength.Add((60000.0 / note.bpm) * (note.durationTicks / 480.0));
                 tickInMeasure.Add(currentTick);
-                tickSum += note.durationTicks; 
+                tickSum += note.durationTicks;
+
+                if (note.isRest) {
+                    result[21] = "xx";
+                    forwardDurTickSum = 0;
+                } else if (note.index == 1) {
+                    result[21] = "0";
+                    forwardDurTickSum += note.durationTicks;
+                } else {
+                    result[21] = forwardDurTickSum.ToString();
+                    forwardDurTickSum += note.durationTicks;
+                }
             }
-            var result = Enumerable.Repeat("xx", 60).ToArray();
+            for (int i = notes.Length-1; i >= 0 ; i--) {
+                HTSNote note = notes[i];
+                if (note.isRest) {
+                    result[21] = "xx";
+                    backwardDurTickSum = 0;
+                } else if (note.index == 1) {
+                    backwardDurTickSum = note.durationTicks;
+                    result[21] = backwardDurTickSum.ToString();
+                } else {
+                    backwardDurTickSum += note.durationTicks;
+                    result[21] = backwardDurTickSum.ToString();
+                }
+            }
             result[8] = "1";//number_of_syllables
             result[9] = "1";//number_of_syllables
             result[10] = "1";//number_of_syllables
@@ -405,6 +454,7 @@ namespace OpenUtau.Core.Util {
             result[14] = "1";//number_of_syllables
             result[15] = "1";//number_of_syllables
             result[16] = "1";//number_of_syllables
+
 
             result[29] = "1";//number_of_syllables
             result[30] = "1";//number_of_syllables
@@ -423,16 +473,14 @@ namespace OpenUtau.Core.Util {
             if (prev == null) {
                 return result;
             } else {
-                result[0] = "";
-                result[1] = "";
-                return result;
+                return prev.h();
             }
         }
 
         public string[] h() {
             var result = Enumerable.Repeat("xx", 2).ToArray();
-            result[0] = "";
-            result[1] = "";
+            result[0] = notes.Length.ToString();
+            result[1] = notes.Select(note => note.symbols.Length).Sum().ToString();
             return result;
         }
 
@@ -441,17 +489,24 @@ namespace OpenUtau.Core.Util {
             if (next == null) {
                 return result;
             } else {
-                result[0] = "";
-                result[1] = "";
-                return result;
+                return next.h();
             }
         }
 
         public string[] j() {
             var result = Enumerable.Repeat("xx", 3).ToArray();
-            result[0] = "1";//number_of_syllables
-            result[1] = "1";//number_of_syllables
-            result[2] = "1";//number_of_syllables
+            if (phrases != null) {
+                int firstBar = phrases[0].notes[0].beatPerBar;
+                int lastBar = phrases[^1].notes[^1].beatPerBar;
+                int barCount = lastBar - firstBar + 1;
+
+                int totalNotes = phrases.Sum(phrase => phrase.notes.Length);
+                int totalSymbols = phrases.Sum(phrase => phrase.notes.Sum(note => note.symbols.Length));
+
+                result[0] = (barCount > 0 ? (totalNotes / barCount).ToString() : "xx");
+                result[1] = (barCount > 0 ? (totalSymbols / barCount).ToString() : "xx");
+                result[2] = phrases.Length.ToString();
+            }
             return result;
         }
 
