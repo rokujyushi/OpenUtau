@@ -285,6 +285,8 @@ namespace OpenUtau.Plugin.Builtin {
             return new HTSNote(
                 symbols: symbols,
                 tone: group[0].tone,
+                isSlur: IsSyllableVowelExtensionNote(group[0]),
+                isRest: symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x)),
                 beatPerBar: bar,
                 beatUnit: beat,
                 key: 0,
@@ -489,6 +491,8 @@ namespace OpenUtau.Plugin.Builtin {
                 key: 0,
                 bpm: 0,
                 tone: 0,
+                isSlur: false,
+                isRest: true,
                 lang: string.Empty,
                 accent: string.Empty,
                 startms: 0,
