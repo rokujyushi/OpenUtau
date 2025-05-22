@@ -3,23 +3,25 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using K4os.Hash.xxHash;
 using OpenUtau.Api;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using OpenUtau.Core.Util.nnmnkwii.io.hts;
 using Serilog;
 
-namespace OpenUtau.Core.Enunu {
+namespace OpenUtau.Core {
     public abstract class HTSLabelPhonemizer : Phonemizer {
         protected USinger singer;
         //information used by HTS writer
-        protected Dictionary<string, string[]> phoneDict;
-        protected string[] vowels;
-        protected string[] breaks;
-        protected string[] pauses;
-        protected string[] silences;
-        protected string[] unvoiced;
-        protected string[] macron;
+        protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
+        protected List<string> vowels = new List<string>();
+        protected List<string> consonants = new List<string>();
+        protected List<string> breaks = new List<string>();
+        protected List<string> pauses = new List<string>();
+        protected List<string> silences = new List<string>();
+        protected List<string> unvoiced = new List<string>();    
+        protected List<string> macron = new List<string>();
         string defaultPause = "pau";
         protected string lang = "";
         int key = 0;
@@ -30,13 +32,14 @@ namespace OpenUtau.Core.Enunu {
         private Dictionary<int, List<Tuple<string, int>>> partResult = new Dictionary<int, List<Tuple<string, int>>>();
         int paddingMs = 500;//子音の持続時間
 
-        protected string tablePath;
-        protected string questionPath;
-        protected string htstmpPath;
-        protected string monoScorePath;
-        protected string fullScorePath;
-        protected string monoTimingPath;
-        protected string fullTimingPath;
+        protected string tmpPath = string.Empty;
+        protected string tablePath = string.Empty;
+        protected string questionPath = string.Empty;
+        protected string htstmpPath = string.Empty;
+        protected string monoScorePath = string.Empty;
+        protected string fullScorePath = string.Empty;
+        protected string monoTimingPath = string.Empty;
+        protected string fullTimingPath = string.Empty;
 
         public HTSLabelPhonemizer() {
 
@@ -47,6 +50,7 @@ namespace OpenUtau.Core.Enunu {
             if (singer == null) {
                 return;
             }
+            phoneDict.Clear();
             //Load enuconfig
             string rootPath;
             if (File.Exists(Path.Join(singer.Location, "enunux", "enuconfig.yaml"))) {
@@ -60,7 +64,7 @@ namespace OpenUtau.Core.Enunu {
             //Load g2p from enunux.yaml
             //g2p dict should be load after enunu dict
             try {
-                this.g2p = LoadG2p(singer.Location);
+                g2p = LoadG2p(singer.Location);
             } catch (Exception e) {
                 Log.Error(e, "failed to load g2p dictionary");
                 return;
@@ -68,7 +72,6 @@ namespace OpenUtau.Core.Enunu {
             //Load Dictionary
             var enunuDictPath = Path.Join(rootPath, tablePath);
             try {
-                phoneDict.Clear();
                 LoadDict(Path.Join(rootPath, tablePath), singer.TextFileEncoding);
             } catch (Exception e) {
                 Log.Error(e, $"failed to load dictionary from {enunuDictPath}");
@@ -85,7 +88,7 @@ namespace OpenUtau.Core.Enunu {
             if (File.Exists(enunuxPath)) {
                 try {
                     var input = File.ReadAllText(enunuxPath, singer.TextFileEncoding);
-                    var data = Core.Yaml.DefaultDeserializer.Deserialize<G2pDictionaryData>(input);
+                    var data = Yaml.DefaultDeserializer.Deserialize<G2pDictionaryData>(input);
                     if (data.symbols != null) {
                         foreach (var symbolData in data.symbols) {
                             builder.AddSymbol(symbolData.symbol, symbolData.type);
@@ -168,6 +171,8 @@ namespace OpenUtau.Core.Enunu {
             return new HTSNote(
                 symbols: symbols,
                 tone: group[0].tone,
+                isSlur: IsSyllableVowelExtensionNote(group[0]),
+                isRest: symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x)),
                 lang: lang,
                 accent: string.Empty,
                 beatPerBar: bar,
@@ -411,8 +416,25 @@ namespace OpenUtau.Core.Enunu {
 
         protected abstract void SendScore(Note[][] phrase);
 
+        ulong HashPhraseGroups(Note[][] phrase) {
+            using (var stream = new MemoryStream()) {
+                using (var writer = new BinaryWriter(stream)) {
+                    writer.Write(phrase.ToString());
+                    foreach (var phone in phrase) {
+                        writer.Write(phone[0].lyric);
+                        writer.Write(phone[0].phoneticHint ?? string.Empty);
+                        var attr = phone[0].phonemeAttributes?.FirstOrDefault(attr => attr.index == 0) ?? default;
+                        writer.Write(attr.toneShift);
+                        writer.Write(phone[0].position);
+                        writer.Write(phone[0].duration);
+                    }
+                    return XXH64.DigestOf(stream.ToArray());
+                }
+            }
+        }
+
         protected void ProcessPart(Note[][] phrase) {
-            var tmpPath = Path.Join(PathManager.Inst.CachePath, $"lab-{phrase:x16}-{this.singer.Name:x16}");
+            tmpPath = Path.Join(PathManager.Inst.CachePath, $"lab-{HashPhraseGroups(phrase):x16}");
             htstmpPath = tmpPath + "_htstemp";
             fullScorePath = Path.Join(htstmpPath, $"full_score.lab");
             fullTimingPath = Path.Join(htstmpPath, $"full_timing.lab");
@@ -431,6 +453,8 @@ namespace OpenUtau.Core.Enunu {
                 key: key,
                 bpm: 0,
                 tone: 0,
+                isSlur: false,
+                isRest: true,
                 lang: lang,
                 accent: string.Empty,
                 startms: 0,
@@ -458,7 +482,7 @@ namespace OpenUtau.Core.Enunu {
                         }
                     }
                     phAlignPoints.Add(new Tuple<int, double>(
-                        htsPhonemes.Count + (firstVowelIndex),//TODO
+                        htsPhonemes.Count + firstVowelIndex,//TODO
                         timeAxis.TickPosToMsPos(htsNote.positionTicks)
                         ));
                     htsPhonemes.AddRange(notePhonemes);
@@ -471,11 +495,15 @@ namespace OpenUtau.Core.Enunu {
                 htsPhonemes.Count,
                 timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks)));
 
+
+            var htsPhrase = new HTSPhrase(htsNotes.ToArray());
+            htsPhrase.phrases = new HTSPhrase[] { htsPhrase };
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].index = i;
                 htsNotes[i].indexBackwards = htsNotes.Count - i;
                 htsNotes[i].sentenceDurMs = sentenceDurMs;
+                htsNotes[i].parent = htsPhrase;
                 if (i > 0) {
                     htsNotes[i].prev = htsNotes[i - 1];
                     htsNotes[i - 1].next = htsNotes[i];
@@ -486,11 +514,15 @@ namespace OpenUtau.Core.Enunu {
                 htsPhonemes[i - 1].next = htsPhonemes[i];
             }
 
+
             try {
+                if (!Directory.Exists(htstmpPath)) {
+                    Directory.CreateDirectory(htstmpPath);
+                }
                 File.WriteAllLines(fullScorePath, htsPhonemes.Select(x => x.dump()));
             } catch (Exception e) {
                 Log.Error(e.ToString());
-                return;
+                throw e;
             }
             SendScore(phrase);
             if (!File.Exists(fullTimingPath)) {
@@ -527,7 +559,7 @@ namespace OpenUtau.Core.Enunu {
                 }
                 double notePos = timeAxis.TickPosToMsPos(group[0].position);//音符起点位置，单位ms
                 for (int phIndex = notePhIndex[groupIndex]; phIndex < notePhIndex[groupIndex + 1]; ++phIndex) {
-                    if (!String.IsNullOrEmpty(phonemesRedirected[phIndex])) {
+                    if (!string.IsNullOrEmpty(phonemesRedirected[phIndex])) {
                         noteResult.Add(Tuple.Create(phonemesRedirected[phIndex], timeAxis.TicksBetweenMsPos(
                            notePos, positions[phIndex - 1])));
                     }
