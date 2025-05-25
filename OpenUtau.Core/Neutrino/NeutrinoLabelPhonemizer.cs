@@ -22,23 +22,14 @@ namespace OpenUtau.Core.Neutrino {
 
         protected NeutrinoSinger singer;
 
-        struct TimingResult {
-            public string path_full_timing;
-            public string path_mono_timing;
-        }
-
-        struct TimingResponse {
-            public string error;
-            public TimingResult result;
-        }
-
         public override void SetSinger(USinger singer) {
-            string confPath = "japanese.utf_8.conf";
-            tablePath = "japanese.utf_8.table";
             this.singer = singer as NeutrinoSinger;
             if (this.singer == null) {
                 return;
             }
+            lang = "JPN";//TODO: use singer.language
+            string confPath = "japanese.utf_8.conf";
+            tablePath = "japanese.utf_8.table";
             string basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO");
             //Load Dictionary
             try {
@@ -112,8 +103,6 @@ namespace OpenUtau.Core.Neutrino {
                 }
                 string ArgParam = $"{fullScorePath} {fullTimingPath} {f0Path} {melspecPath} {modelDir} -n 1 -o {numThreads} -k {toneShift} -d 2 {gpuMode}";
                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
-                fullTimingPath = "";
-                monoTimingPath = "";
             }
         }
     }
