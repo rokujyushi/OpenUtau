@@ -1,12 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
-using K4os.Hash.xxHash;
 using OpenUtau.Api;
 using OpenUtau.Core.Ustx;
-using Serilog;
+using OpenUtau.Core.Util;
 
 namespace OpenUtau.Core.Enunu {
     [Phonemizer("Enunu Label Phonemizer", "ENUNU-LAB")]
@@ -32,6 +28,18 @@ namespace OpenUtau.Core.Enunu {
             if (port == null) {
                 port = EnunuUtils.SetPortNum();
             }
+        }
+
+        protected override HTSNote CustomHTSNoteContext(HTSNote htsNote, Note note) {
+            throw new NotImplementedException();
+        }
+
+        protected override Note[][] PhraseAdjustments(Note[][] phrese) {
+            throw new NotImplementedException();
+        }
+
+        protected override HTSPhoneme[] CustomHTSPhonemeContext(HTSPhoneme[] htsPhonemes, Note[] notes) {
+            throw new NotImplementedException();
         }
 
         protected override void SendScore(Note[][] phrase) {
