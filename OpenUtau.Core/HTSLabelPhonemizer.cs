@@ -20,11 +20,10 @@ namespace OpenUtau.Core {
         protected List<string> breaks = new List<string>();
         protected List<string> pauses = new List<string>();
         protected List<string> silences = new List<string>();
-        protected List<string> unvoiced = new List<string>();    
-        protected List<string> macron = new List<string>();
-        string defaultPause = "pau";
+        protected List<string> unvoiced = new List<string>();
         protected string lang = "";
         int key = 0;
+        int resolution = 480;
 
         //information used by openutau phonemizer
         protected IG2p g2p;
@@ -147,6 +146,7 @@ namespace OpenUtau.Core {
 
         public override void SetUp(Note[][] notes, UProject project, UTrack track) {
             key = project.key;
+            resolution = project.resolution;
             //将全曲拆分为句子
             var phrase = new List<Note[]> { notes[0] };
             for (int i = 1; i < notes.Length; ++i) {
@@ -165,25 +165,57 @@ namespace OpenUtau.Core {
             }
         }
 
+        protected (string prefix, string suffix) GetPrefixAndSuffix(Note note) {
+            string prefix = string.Empty;
+            string suffix = string.Empty;
+
+            var textList = note.lyric.Split().ToList();
+            bool splitFlag = true;
+            foreach (var text in textList) {
+                var existSymbol = g2p.IsValidSymbol(text);
+                if (existSymbol) {
+                    splitFlag = false;
+                    continue;
+                } else if (existSymbol && !splitFlag) {
+                    splitFlag = true;
+                    continue;
+                }
+                if (splitFlag) {
+                    prefix += text;
+                } else {
+                    suffix += text;
+                }
+            }
+
+            return (prefix, suffix);
+        }
+
+        protected abstract HTSNote CustomHTSNoteContext(HTSNote htsNote, Note note);
+
         //make a HTS Note from given symbols and UNotes
         protected HTSNote makeHtsNote(string[] symbols, IList<Note> group, int startTick) {
+            UTimeSignature sig = timeAxis.TimeSignatureAtTick(group[0].position);
             timeAxis.TickPosToBarBeat(group[0].position, out int bar, out int beat, out int remainingTicks);
-            return new HTSNote(
-                symbols: symbols,
-                tone: group[0].tone,
-                isSlur: IsSyllableVowelExtensionNote(group[0]),
-                isRest: symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x)),
-                lang: lang,
-                accent: string.Empty,
-                beatPerBar: bar,
-                beatUnit: beat,
-                key: key,
-                bpm: timeAxis.GetBpmAtTick(group[0].position),
-                startms: (int)timeAxis.MsBetweenTickPos(startTick, group[0].position) + paddingMs,
-                endms: (int)timeAxis.MsBetweenTickPos(startTick, group[^1].position + group[^1].duration) + paddingMs,
-                positionTicks: group[0].position,
-                durationTicks: group[^1].position + group[^1].duration - group[0].position
-                );
+            var isRest = symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x));
+            var htsNote = new HTSNote(
+                            symbols: symbols,
+                            tone: group[0].tone,
+                            isSlur: IsSyllableVowelExtensionNote(group[0]),
+                            isRest: isRest,
+                            lang: isRest ? string.Empty : lang,
+                            accent: string.Empty,
+                            beatPerBar: sig.beatPerBar,
+                            beatUnit: sig.beatUnit,
+                            positionBar: bar,
+                            positionBeat: beat,
+                            key: key,
+                            bpm: timeAxis.GetBpmAtTick(group[0].position),
+                            startms: (int)timeAxis.MsBetweenTickPos(startTick, group[0].position) + paddingMs,
+                            endms: (int)timeAxis.MsBetweenTickPos(startTick, group[^1].position + group[^1].duration) + paddingMs,
+                            positionTicks: group[0].position,
+                            durationTicks: group[^1].position + group[^1].duration - group[0].position
+                            );
+            return CustomHTSNoteContext(htsNote, group[0]) ?? htsNote;
         }
 
         protected HTSNote makeHtsNote(string symbol, Note[] group, int startTick) {
@@ -269,9 +301,6 @@ namespace OpenUtau.Core {
             if (vowels.Contains(phoneme)) {
                 return "v";
             }
-            if (macron.Contains(phoneme)) {
-                return "m";
-            }
             if (pauses.Contains(phoneme)) {
                 return "p";
             }
@@ -281,9 +310,9 @@ namespace OpenUtau.Core {
             if (breaks.Contains(phoneme)) {
                 return "b";
             }
-            if (unvoiced.Contains(phoneme)) {
-                return "u";
-            }
+            //if (unvoiced.Contains(phoneme)) {
+            //    return "c";
+            //}
             return "c";
         }
 
@@ -311,9 +340,8 @@ namespace OpenUtau.Core {
             if (lyricSplited.Length > 0) {
                 return lyricSplited;
             }
-            return new string[] { defaultPause };
+            return new string[] { "pau" };
         }
-
 
         private (string[], int[], Note[]) GetSymbolsAndVowels(Note[] notes) {
             var mainNote = notes[0];
@@ -422,7 +450,9 @@ namespace OpenUtau.Core {
                     writer.Write(phrase.ToString());
                     foreach (var phone in phrase) {
                         writer.Write(phone[0].lyric);
-                        writer.Write(phone[0].phoneticHint ?? string.Empty);
+                        if (phone[0].phoneticHint != null) {
+                            writer.Write("[" + phone[0].phoneticHint + "]");
+                        }
                         var attr = phone[0].phonemeAttributes?.FirstOrDefault(attr => attr.index == 0) ?? default;
                         writer.Write(attr.toneShift);
                         writer.Write(phone[0].position);
@@ -433,29 +463,42 @@ namespace OpenUtau.Core {
             }
         }
 
+        protected abstract Note[][] PhraseAdjustments(Note[][] phrese);
+
+        protected abstract HTSPhoneme[] CustomHTSPhonemeContext(HTSPhoneme[] htsPhonemes, Note[] notes);
+
+
         protected void ProcessPart(Note[][] phrase) {
             tmpPath = Path.Join(PathManager.Inst.CachePath, $"lab-{HashPhraseGroups(phrase):x16}");
             htstmpPath = tmpPath + "_htstemp";
             fullScorePath = Path.Join(htstmpPath, $"full_score.lab");
             fullTimingPath = Path.Join(htstmpPath, $"full_timing.lab");
+            monoScorePath = Path.Join(htstmpPath, $"mono_score.lab");
+            monoTimingPath = Path.Join(htstmpPath, $"mono_timing.lab");
+
+            phrase = PhraseAdjustments(phrase) ?? phrase;
 
             int offsetTick = phrase[0][0].position;
             int sentenceDurMs = paddingMs + (int)timeAxis.MsBetweenTickPos(
                 phrase[0][0].position, phrase[^1][^1].position + phrase[^1][^1].duration);
+            int sentenceDurTicks = (phrase[^1][^1].position + phrase[^1][^1].duration) - phrase[0][0].position;
             int paddingTicks = timeAxis.MsPosToTickPos(paddingMs);
             var notePhIndex = new List<int> { 1 };//每个音符的第一个音素在音素列表上对应的位置
             var phAlignPoints = new List<Tuple<int, double>>();//音素对齐的位置，Ms，绝对时间
-            timeAxis.TickPosToBarBeat(phrase[0][0].position, out int bar, out int beat, out int remainingTicks);
+            UTimeSignature sig = timeAxis.TimeSignatureAtTick(phrase[0][0].position - paddingTicks);
+            timeAxis.TickPosToBarBeat(phrase[0][0].position - paddingTicks, out int bar, out int beat, out int remainingTicks);
             HTSNote PaddingNote = new HTSNote(
-                symbols: new string[] { defaultPause },
-                beatPerBar: bar,
-                beatUnit: beat,
+                symbols: new string[] { "pau" },
+                beatPerBar: sig.beatPerBar,
+                beatUnit: sig.beatUnit,
+                positionBar: bar,
+                positionBeat: beat,
                 key: key,
                 bpm: 0,
                 tone: 0,
                 isSlur: false,
                 isRest: true,
-                lang: lang,
+                lang: string.Empty,//TODO:Does the pau not have language information?
                 accent: string.Empty,
                 startms: 0,
                 endms: paddingMs,
@@ -472,7 +515,8 @@ namespace OpenUtau.Core {
                 HTSNote[] Syllables = MakeSyllables(phrase[noteIndex], offsetTick);
                 htsNotes.AddRange(Syllables);
                 foreach (var htsNote in Syllables) {
-                    var notePhonemes = HTSNoteToPhonemes(htsNote);
+                    var tmpPhonemes = HTSNoteToPhonemes(htsNote);
+                    var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase[noteIndex]) ?? tmpPhonemes;
                     //分析第几个音素与音符对齐
                     int firstVowelIndex = 0;//The index of the first vowel in the note
                     for (int phIndex = 0; phIndex < htsNote.symbols.Length; phIndex++) {
@@ -490,6 +534,9 @@ namespace OpenUtau.Core {
                 notePhIndex.Add(htsPhonemes.Count);
             }
 
+            //htsNotes.Add(PaddingNote);//add padding note to the end of htsNotes
+            //htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNote));
+
             var lastNote = htsNotes[^1];
             phAlignPoints.Add(new Tuple<int, double>(
                 htsPhonemes.Count,
@@ -497,13 +544,16 @@ namespace OpenUtau.Core {
 
 
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
-            htsPhrase.phrases = new HTSPhrase[] { htsPhrase };
+            htsPhrase.resolution = resolution;
+            htsPhrase.totalNotes = htsNotes.Count;
+            htsPhrase.totalPhonemes = htsPhonemes.Count;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
+                htsNotes[i].parent = htsPhrase;
                 htsNotes[i].index = i;
                 htsNotes[i].indexBackwards = htsNotes.Count - i;
                 htsNotes[i].sentenceDurMs = sentenceDurMs;
-                htsNotes[i].parent = htsPhrase;
+                htsNotes[i].sentenceDurTicks = sentenceDurTicks;
                 if (i > 0) {
                     htsNotes[i].prev = htsNotes[i - 1];
                     htsNotes[i - 1].next = htsNotes[i];
@@ -525,33 +575,34 @@ namespace OpenUtau.Core {
                 throw e;
             }
             SendScore(phrase);
-            if (!File.Exists(fullTimingPath)) {
-                Log.Error(@"File not found.:{timingPath}");
+            if (!File.Exists(monoTimingPath)) {
+                Log.Error($"File not found.:{monoTimingPath}");
                 return;
             }
-            HTSLabelFile hTSLabels = hts.load(fullTimingPath, Encoding.UTF8);
-            List<Tuple<int, double, double>> timing = hTSLabels
-                .Select((label, index) => Tuple.Create(index, timeAxis.TickPosToMsPos((double)label.start_time), timeAxis.TickPosToMsPos((double)label.end_time)))
-                .ToList();
+            HTSLabelFile hTSLabels = hts.load(monoTimingPath, Encoding.UTF8);
+            //List<Tuple<int, double, double>> timing = hTSLabels
+            //    .Select((label, index) => Tuple.Create(index, timeAxis.TickPosToMsPos((double)label.start_time), timeAxis.TickPosToMsPos((double)label.end_time)))
+            //    .ToList();
+            List<double> labPositions = hTSLabels.Select(label => timeAxis.TickPosToMsPos((double)(label.start_time) / 1000)).ToList();
 
 
             //アライメント、時系列を位置系列に変換、単位ms
-            var positions = new List<double>();
-            List<double> alignGroup = (List<double>)timing.Select(x => timeAxis.TickPosToMsPos(x.Item2));
+            List<double> positions = new List<double>();
+            List<double> alignGroup = labPositions.GetRange(0, phAlignPoints[0].Item1 - 1);
             //子音の開始位置がずれている
             positions.AddRange(stretch(alignGroup, 1, phAlignPoints[0].Item2));
             //セグメントごとの他の音素の線形スケーリング
             foreach (var pair in phAlignPoints.Zip(phAlignPoints.Skip(1), (a, b) => Tuple.Create(a, b))) {
                 var currAlignPoint = pair.Item1;
                 var nextAlignPoint = pair.Item2;
-                alignGroup = alignGroup.GetRange(currAlignPoint.Item1, nextAlignPoint.Item1 - currAlignPoint.Item1);
+                alignGroup = labPositions.GetRange(currAlignPoint.Item1, nextAlignPoint.Item1 - currAlignPoint.Item1);
                 double ratio = (nextAlignPoint.Item2 - currAlignPoint.Item2) / alignGroup.Sum();
                 positions.AddRange(stretch(alignGroup, ratio, nextAlignPoint.Item2));
             }
             //一連のポジションを刻みに変換し、結果リストに入力する。
             int index = 1;
             foreach (int groupIndex in Enumerable.Range(0, phrase.Length)) {
-                string[] phonemesRedirected = (string[])htsPhonemes.Select(x => x.symbol);
+                string[] phonemesRedirected = htsPhonemes.Select(x => x.symbol).ToArray();
                 Note[] group = phrase[groupIndex];
                 var noteResult = new List<Tuple<string, int>>();
                 if (group[0].lyric.StartsWith("+")) {
