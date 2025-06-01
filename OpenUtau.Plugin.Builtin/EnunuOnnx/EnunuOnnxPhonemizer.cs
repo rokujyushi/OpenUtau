@@ -281,14 +281,17 @@ namespace OpenUtau.Plugin.Builtin {
 
         //make a HTS Note from given symbols and UNotes
         protected HTSNote makeHtsNote(string[] symbols, IList<Note> group, int startTick) {
+            UTimeSignature sig = timeAxis.TimeSignatureAtTick(group[0].position);
             timeAxis.TickPosToBarBeat(group[0].position, out int bar, out int beat, out int remainingTicks);
             return new HTSNote(
                 symbols: symbols,
                 tone: group[0].tone,
                 isSlur: IsSyllableVowelExtensionNote(group[0]),
                 isRest: symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x)),
-                beatPerBar: bar,
-                beatUnit: beat,
+                beatPerBar: sig.beatPerBar,
+                beatUnit: sig.beatUnit,
+                positionBar: bar,
+                positionBeat: beat,
                 key: 0,
                 lang: string.Empty,
                 accent: string.Empty,
@@ -483,11 +486,14 @@ namespace OpenUtau.Plugin.Builtin {
             int paddingTicks = timeAxis.MsPosToTickPos(paddingMs);
             var notePhIndex = new List<int> { 1 };//每个音符的第一个音素在音素列表上对应的位置
             var phAlignPoints = new List<Tuple<int, double>>();//音素对齐的位置，Ms，绝对时间
-            timeAxis.TickPosToBarBeat(phrase[0][0].position, out int bar, out int beat, out int remainingTicks);
+            UTimeSignature sig = timeAxis.TimeSignatureAtTick(phrase[0][0].position - paddingTicks);
+            timeAxis.TickPosToBarBeat(phrase[0][0].position - paddingTicks, out int bar, out int beat, out int remainingTicks);
             HTSNote PaddingNote = new HTSNote(
                 symbols: new string[] { defaultPause },
-                beatPerBar: bar,
-                beatUnit: beat,
+                beatPerBar: sig.beatPerBar,
+                beatUnit: sig.beatUnit,
+                positionBar: bar,
+                positionBeat: beat,
                 key: 0,
                 bpm: 0,
                 tone: 0,
@@ -534,8 +540,12 @@ namespace OpenUtau.Plugin.Builtin {
                 htsPhonemes.Count,
                 timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks)));
 
+            var htsPhrase = new HTSPhrase(htsNotes.ToArray());
+            htsPhrase.totalNotes = htsNotes.Count;
+            htsPhrase.totalPhonemes = htsPhonemes.Count;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
+                htsNotes[i].parent = htsPhrase;
                 htsNotes[i].index = i;
                 htsNotes[i].indexBackwards = htsNotes.Count - i;
                 htsNotes[i].sentenceDurMs = sentenceDurMs;
