@@ -140,15 +140,15 @@ namespace OpenUtau.Core.Neutrino {
                 int toneShift = attr.toneShift;
                 int numThreads = Preferences.Default.NumRenderThreads;
                 int gpuMode = -1;
-                switch (Preferences.Default.OnnxRunner) {
-                    case "directml":
-                        gpuMode = Preferences.Default.OnnxGpu;
-                        break;
-                    default:
-                        gpuMode = -1;
-                        break;
-                }
-                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -n 1 -k {toneShift} -o {numThreads} -d {gpuMode} -m -t";
+                //switch (Preferences.Default.OnnxRunner) {
+                //    case "directml":
+                //        gpuMode = Preferences.Default.OnnxGpu;
+                //        break;
+                //    default:
+                //        gpuMode = -1;
+                //        break;
+                //}
+                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -a -p 1 -n 1 -k {toneShift} -o {numThreads} -m -t";
                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
             }
         }

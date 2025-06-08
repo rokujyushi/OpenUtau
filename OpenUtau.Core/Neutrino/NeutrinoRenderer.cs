@@ -11,6 +11,7 @@ using NumSharp;
 using OpenUtau.Api;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Render;
+using OpenUtau.Core.SignalChain;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using Serilog;
@@ -28,7 +29,8 @@ namespace OpenUtau.Core.Neutrino {
             Format.Ustx.TENC,
             Format.Ustx.BREC,
             Format.Ustx.VOIC,
-            ENG
+            ENG,
+            Format.Ustx.DIR
         };
 
         static readonly object lockObj = new object();
@@ -49,8 +51,6 @@ namespace OpenUtau.Core.Neutrino {
         string WorldExe = string.Empty;
         string[] Eng = new string[] { "NSF", "WORLD" };
         const int fs = 48000;
-        public const int headTicks = 240;
-        public const int tailTicks = 240;
         //information used by HTS writer
         protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
         protected List<string> vowels = new List<string>();
@@ -310,6 +310,15 @@ namespace OpenUtau.Core.Neutrino {
             return htsPhonemes;
         }
 
+        protected struct monoLabel {
+            public string symbol;
+            public int startMs;
+            public int endMs;
+            public override string ToString() {
+                return $"{startMs * 1000} {endMs * 1000} {symbol}";
+            }
+        }
+
         protected void ProcessPart(RenderPhrase phrase) {
             timeAxis = phrase.timeAxis;
 
@@ -329,7 +338,7 @@ namespace OpenUtau.Core.Neutrino {
                 positionBar: bar,
                 positionBeat: beat,
                 key: key,
-                bpm: 0,
+                bpm: timeAxis.GetBpmAtTick(phrase.position - paddingTicks),
                 tone: 0,
                 isSlur: false,
                 isRest: true,
@@ -347,20 +356,13 @@ namespace OpenUtau.Core.Neutrino {
 
             //Alignment
             for (int noteIndex = 0; noteIndex < phrase.notes.Length; ++noteIndex) {
-                var phenes = phrase.phones.Where(ph => ph.noteIndex == noteIndex).ToList();
-                var phonemes = phenes.Select(ph => ph.phoneme).ToArray();
+                var phonemes = phrase.phones.Where(ph => ph.noteIndex == noteIndex).Select(ph => ph.phoneme).ToArray();
                 HTSNote htsNote = makeHtsNote(phonemes, phrase.notes[noteIndex], offsetTick);
                 htsNotes.Add(htsNote);
                 var tmpPhonemes = HTSNoteToPhonemes(htsNote);
                 var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase.notes[noteIndex]) ?? tmpPhonemes;
-                for(int i = 0; i < phenes.Count; ++i) {
-                    //Log.Debug($"Note {noteIndex} Phoneme {i}: {phenes[i].phoneme} at {phenes[i].positionMs}ms, duration {phenes[i].endMs}ms");
-                    //Log.Debug($"HTSNote {noteIndex} HTSPhonemes {i}: {notePhonemes[i].symbol} at {notePhonemes[i].parent.startMs}ms, duration {notePhonemes[i].parent.endMs}ms");
-                    notePhonemes[i].parent.startMs = (int)phenes[i].positionMs;
-                    notePhonemes[i].parent.endMs = (int)phenes[i].endMs;
-                }
-            //分析第几个音素与音符对齐
-            int firstVowelIndex = 0;//The index of the first vowel in the note
+                //分析第几个音素与音符对齐
+                int firstVowelIndex = 0;//The index of the first vowel in the note
                 for (int phIndex = 0; phIndex < htsNote.symbols.Length; phIndex++) {
                     if (g2p.IsVowel(htsNote.symbols[phIndex])) {
                         firstVowelIndex = phIndex;
@@ -375,8 +377,8 @@ namespace OpenUtau.Core.Neutrino {
                 notePhIndex.Add(htsPhonemes.Count);
             }
 
-            htsNotes.Add(PaddingNote);//add padding note to the end of htsNotes
-            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNote));
+            //htsNotes.Add(PaddingNote);//add padding note to the end of htsNotes
+            //htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNote));
 
             var lastNote = htsNotes[^1];
             phAlignPoints.Add(new Tuple<int, double>(
@@ -405,12 +407,67 @@ namespace OpenUtau.Core.Neutrino {
                 htsPhonemes[i - 1].next = htsPhonemes[i];
             }
 
+            List<monoLabel> monoLabels = new List<monoLabel>();
+            monoLabels.Add(new monoLabel() {
+                symbol = htsPhonemes[0].symbol,
+                startMs = htsPhonemes[0].parent.startMs,
+                endMs = htsPhonemes[0].parent.endMs
+            });
+            foreach (var phneme in phrase.phones) {
+                monoLabels.Add(new monoLabel() {
+                    symbol = phneme.phoneme,
+                    startMs = (int)phneme.positionMs,
+                    endMs = (int)phneme.endMs
+                });
+            }
 
             try {
                 File.WriteAllLines(fullScorePath, htsPhonemes.Select(x => x.dump()));
+                File.WriteAllLines(monoTimingPath, monoLabels.Select(x => x.ToString()));
             } catch (Exception e) {
                 Log.Error(e.ToString());
                 throw e;
+            }
+        }
+
+        public double[] LoadFile(string filePath) {
+            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read)) {
+                using (BinaryReader reader = new BinaryReader(fs)) {
+                    long fileSize = fs.Length;
+                    int Count = (int)(fileSize / sizeof(float));
+                    double[] pitchData = new double[Count];
+                    for (int i = 0; i < Count; i++) {
+                        pitchData[i] = reader.ReadSingle();
+                    }
+                    return pitchData;
+                }
+            }
+        }
+        private static double[,] Array2DArray(double[] elements, int columns)
+        {
+            int rows = elements.Length / columns;
+            double[,] result = new double[rows, columns];
+            for (int i = 0; i < rows; i++)
+            {
+                for (int j = 0; j < columns; j++)
+                {
+                    result[i, j] = elements[i * columns + j];
+                }
+            }
+            return result;
+        }
+
+        public void SaveFile(string filePath, double[] doubles) {
+            try {
+                using (FileStream fs = new FileStream(filePath, FileMode.Create, FileAccess.Write)) {
+                    using (BinaryWriter writer = new BinaryWriter(fs)) {
+                        foreach (double pitch in doubles) {
+                            writer.Write(pitch);
+                        }
+                    }
+                }
+            } catch (Exception ex) {
+                Log.Error($"Error: {ex.Message}");
             }
         }
 
@@ -431,70 +488,93 @@ namespace OpenUtau.Core.Neutrino {
                     string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
                     this.singer = phrase.singer as NeutrinoSinger;
-                    if(g2p == null || string.IsNullOrEmpty(NeutrinoExe)) {
+                    if (g2p == null || string.IsNullOrEmpty(NeutrinoExe)) {
                         setUp();
                     }
                     var result = Layout(phrase);
                     var hash = HashPhraseGroups(phrase);
-                    var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}", "_entemp");
+                    var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}_entemp");
                     if (!Directory.Exists(tmpPath)) {
                         Directory.CreateDirectory(tmpPath);
                     }
-
                     var wavPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash:x16}.wav");
-                    string f0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.f0");
-                    string melspecPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.melspec");
-                    string mgcPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.mgc");
-                    string bapPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.bap");
-                    fullScorePath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_full_score.lab");
-                    monoTimingPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_mono_timing.lab");
+                    if (!File.Exists(wavPath)) {
+                        string f0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.f0");
+                        string editorf0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_edit.f0");
+                        string melspecPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.melspec");
+                        string mgcPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.mgc");
+                        string bapPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.bap");
+                        fullScorePath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_full_score.lab");
+                        monoTimingPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_mono_timing.lab");
 
-                    string modelDir = this.singer.Location + "\\";
-                    int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
-                    int numThreads = Preferences.Default.NumRenderThreads;
-                    int gpuMode = -1;
-                    switch (Preferences.Default.OnnxRunner) {
-                        case "directml":
-                            gpuMode = Preferences.Default.OnnxGpu;
-                            break;
-                        default:
-                            gpuMode = -1;
-                            break;
-                    }
-
-                    if (File.Exists(wavPath)) {
-                        if (!File.Exists(fullScorePath)) {
+                        string modelDir = this.singer.Location + "\\";
+                        int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
+                        int numThreads = Preferences.Default.NumRenderThreads;
+                        //int gpuMode = -1;
+                        //switch (Preferences.Default.OnnxRunner) {
+                        //    case "directml":
+                        //        gpuMode = Preferences.Default.OnnxGpu;
+                        //        break;
+                        //    default:
+                        //        gpuMode = -1;
+                        //        break;
+                        //}
+                        string nsf = "ve";
+                        int sampleRate = fs / 1000;
+                        if (!File.Exists(fullScorePath) && !File.Exists(monoTimingPath)) {
                             ProcessPart(phrase);
                         }
-                        string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -n 1 -o ${numThreads} -k ${toneShift} -d 2 {gpuMode}";
-                        ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
-                        var flag = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(ENG));
+                        var flag1 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(ENG));
                         string eng = string.Empty;
-                        if(flag != null) {
-                            eng = flag.Item1;
+                        if (flag1 != null) {
+                            eng = flag1.Item1;
                         }
                         if (eng.Equals(Eng[0])) {
-                            ArgParam = $"{f0Path} {melspecPath} {modelDir} {wavPath} -l {monoTimingPath} -n 1 -o ${numThreads} -k ${toneShift} -d 2 {gpuMode}";
+                            string ArgParam = string.Empty;
+                            if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                            }
+                            if (phrase.phones[0].direct) {
+                                double[] f0 = LoadFile(f0Path);
+                                var framePeriod = 5;
+                                int totalFrames = f0.Length;
+                                var headMs = 0d;
+                                var tailMs = 0d;
+                                int headFrames = (int)Math.Round(headMs / framePeriod);
+                                int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                                double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                                SaveFile(editorf0Path, editorF0);
+                                ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate} -f {toneShift} -m -t";
+                            } else {
+                                ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate} -f {toneShift} -m -t";
+                            }
                             ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
+                            using (var waveStream = new WaveFileReader(wavPath)) {
+                                result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
+                                Wave.CorrectSampleScale(result.samples);
+                                var signal = new NWaves.Signals.DiscreteSignal((48000), result.samples);
+                                signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                                var source = new WaveSource(0, 0, 0, 1);
+                                source.SetSamples(result.samples);
+                                WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
+                            }
                         } else {
                             if (!File.Exists(f0Path) || !File.Exists(mgcPath) || !File.Exists(bapPath)) {
-                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -n 1 -o ${numThreads} -k ${toneShift} -d 2 {gpuMode}";
+                                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -n 1 -o {numThreads} -k {toneShift} -m -t";
                                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                             }
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
                             }
-                            var f0 = np.Load<double[]>(f0Path);
-                            var mgc = np.Load<double[]>(mgcPath);
-                            var bap = np.Load<double[]>(bapPath);
-                            int fftSize = (mgc.Length - 1) * 2;
-                            var sp = Worldline.DecodeMgc(f0.Length, mgc, fftSize, fs);
-                            var ap = Worldline.DecodeBap(f0.Length, bap, fftSize, fs);
+                            double[] f0 = LoadFile(f0Path);
+                            double[,] mgc = Array2DArray(LoadFile(mgcPath),60);
+                            double[,] bap = Array2DArray(LoadFile(bapPath),5);
 
                             var framePeriod = 5;
                             int totalFrames = f0.Length;
-                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
-                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
+                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position);
+                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end) - phrase.endMs;
                             int headFrames = (int)Math.Round(headMs / framePeriod);
                             int tailFrames = (int)Math.Round(tailMs / framePeriod);
 
@@ -511,10 +591,18 @@ namespace OpenUtau.Core.Neutrino {
                             }
                             var samples = Worldline.WorldSynthesis(
                                 editorF0,
-                                sp, false, sp.GetLength(1),
-                                ap, false, fftSize,
+                                mgc, true, mgc.Length - 1,
+                                bap, true, bap.Length - 1,
                                 framePeriod, fs,
                                 gender, tension, breathiness, voicing);
+                            result.samples = samples.Select(d => (float)d).ToArray();
+                            Wave.CorrectSampleScale(result.samples);
+                            var signal = new NWaves.Signals.DiscreteSignal((sampleRate * 1000), result.samples);
+                            signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                            result.samples = signal.Samples;
+                            var source = new WaveSource(0, 0, 0, 1);
+                            source.SetSamples(result.samples);
+                            WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                         }
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
@@ -567,6 +655,13 @@ namespace OpenUtau.Core.Neutrino {
 
         RenderPitchResult IRenderer.LoadRenderedPitch(RenderPhrase phrase) {
             try {
+                var hash = HashPhraseGroups(phrase);
+                var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}", "_entemp");
+                if (!Directory.Exists(tmpPath)) {
+                    return null;
+                }
+                string f0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.f0");
+                var f0 = np.Load<double[]>(f0Path);
             } catch {
             }
             return null;
