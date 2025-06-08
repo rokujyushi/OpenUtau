@@ -494,7 +494,7 @@ namespace OpenUtau.Core {
                 positionBar: bar,
                 positionBeat: beat,
                 key: key,
-                bpm: 0,
+                bpm: timeAxis.GetBpmAtTick(phrase[0][0].position - paddingTicks),
                 tone: 0,
                 isSlur: false,
                 isRest: true,
@@ -545,8 +545,9 @@ namespace OpenUtau.Core {
 
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
             htsPhrase.resolution = resolution;
-            htsPhrase.totalNotes = htsNotes.Count;
-            htsPhrase.totalPhonemes = htsPhonemes.Count;
+            htsPhrase.totalNotes = htsNotes.Count - 1;
+            htsPhrase.totalPhonemes = htsPhonemes.Count - 1;
+            htsPhrase.totalPhrases = 1;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].parent = htsPhrase;
@@ -583,7 +584,7 @@ namespace OpenUtau.Core {
             //List<Tuple<int, double, double>> timing = hTSLabels
             //    .Select((label, index) => Tuple.Create(index, timeAxis.TickPosToMsPos((double)label.start_time), timeAxis.TickPosToMsPos((double)label.end_time)))
             //    .ToList();
-            List<double> labPositions = hTSLabels.Select(label => timeAxis.TickPosToMsPos((double)(label.start_time) / 1000)).ToList();
+            List<double> labPositions = hTSLabels.Select(label => (double)(label.end_time - label.start_time) / 100000).ToList();
 
 
             //アライメント、時系列を位置系列に変換、単位ms

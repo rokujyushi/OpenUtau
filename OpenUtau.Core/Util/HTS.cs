@@ -176,15 +176,30 @@ namespace OpenUtau.Core.Util {
         }
 
         public string[] g() {
-            return parent.g();
+            var result = parent.g();
+            if (!type.Equals("p")) {
+                result[0] = "xx";
+                result[1] = "xx";
+            }
+            return result;
         }
 
         public string[] h() {
-            return parent.h();
+            var result = parent.h();
+            if (!type.Equals("p")) {
+                result[0] = "xx";
+                result[1] = "xx";
+            }
+            return result;
         }
 
         public string[] i() {
-            return parent.i();
+            var result = parent.i();
+            if (!type.Equals("p")) {
+                result[0] = "xx";
+                result[1] = "xx";
+            }
+            return result;
         }
 
         public string[] j() {
@@ -389,6 +404,7 @@ namespace OpenUtau.Core.Util {
 
     public class HTSPhrase {
         public int resolution = 480;
+        public int totalPhrases;
         public int totalNotes;
         public int totalPhonemes;
 
@@ -617,7 +633,7 @@ namespace OpenUtau.Core.Util {
             var result = Enumerable.Repeat("xx", 3).ToArray();
             result[0] = (barCount > 0 ? (totalNotes / barCount).ToString() : "xx");
             result[1] = (barCount > 0 ? (totalPhonemes / barCount).ToString() : "xx");
-            result[2] = totalNotes.ToString();
+            result[2] = totalPhrases.ToString();
             return result;
         }
 
