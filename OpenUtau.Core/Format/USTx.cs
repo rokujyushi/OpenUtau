@@ -146,7 +146,7 @@ namespace OpenUtau.Core.Format {
             project.AfterLoad();
             project.ValidateFull();
             if (project.ustxVersion > kUstxVersion) {
-                throw new MessageCustomizableException($"Project file is newer than software: {filePath}", $"<translate:errors.failed.opennewerproject>:\n{filePath}", new FileFormatException("Project file is newer than software."));
+                throw new MessageCustomizableException($"Project file is newer than software: {project.FilePath}", $"<translate:errors.failed.opennewerproject>:\n{project.FilePath}", new FileFormatException("Project file is newer than software."));
             }
             if (project.ustxVersion < kUstxVersion) {
                 Log.Information($"Upgrading project from {project.ustxVersion} to {kUstxVersion}");
