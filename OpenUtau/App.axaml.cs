@@ -8,7 +8,6 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using OpenUtau.App.Views;
-using OpenUtau.Core.Util;
 using Serilog;
 
 namespace OpenUtau.App {

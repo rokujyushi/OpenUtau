@@ -11,6 +11,7 @@ namespace OpenUtau.App.Views {
                 StyleManager.SetStyles(this, 3);
             }
             InitializeComponent();
+            DIALOG_Box.AddHandler(KeyDownEvent, TextBoxKeyDown, RoutingStrategies.Tunnel);
         }
 
         void OnOpened(object? sender, EventArgs e) {
@@ -31,9 +32,13 @@ namespace OpenUtau.App.Views {
             Close();
         }
 
-        private void OnKeyDown(object? sender, KeyEventArgs e) {
+        private void TextBoxKeyDown(object? sender, KeyEventArgs e) {
             switch (e.Key) {
                 case Key.Enter:
+                    //If Shift+Enter, insert line break (default textbox behavior).
+                    if (e.KeyModifiers == KeyModifiers.Shift) {
+                        return;
+                    }
                     OnFinish(sender, e);
                     e.Handled = true;
                     break;
