@@ -861,11 +861,30 @@ namespace OpenUtau.App.Views {
             if (editState != null) {
                 return;
             }
-            if (point.Properties.IsLeftButtonPressed) {
-                editState = new ExpSetValueState(control, ViewModel, this);
-            } else if (point.Properties.IsRightButtonPressed) {
-                editState = new ExpResetValueState(control, ViewModel, this);
-                Cursor = ViewConstants.cursorNo;
+            if (ViewModel.NotesViewModel.PenTool || ViewModel.NotesViewModel.PenPlusTool) {
+                if (point.Properties.IsLeftButtonPressed) {
+                    editState = new ExpSetValueState(control, ViewModel, this);
+                } else if (point.Properties.IsRightButtonPressed) {
+                    editState = new ExpResetValueState(control, ViewModel, this);
+                    Cursor = ViewConstants.cursorNo;
+                }
+            }else if (ViewModel.NotesViewModel.CursorTool) {
+                if (point.Properties.IsLeftButtonPressed) {
+                    var hitInfo = ViewModel.NotesViewModel.HitTest.HitTestPitchPoint(point.Position);
+                    if (hitInfo.hit) {
+                        if (args.KeyModifiers == cmdKey) {
+                            ViewModel.NotesViewModel.ToggleSelectExpression(hitInfo.expression);
+                        } else if (args.KeyModifiers == KeyModifiers.Shift) {
+                            ViewModel.NotesViewModel.SelectExpressionsUntil(hitInfo.expression);
+                        } else {
+                            editState = new ExpSelectionState(control, ViewModel, this, SelectionBox);
+                            Cursor = ViewConstants.cursorCross;
+                        }
+                    }
+                } else if (point.Properties.IsRightButtonPressed) {
+                    editState = new ExpResetValueState(control, ViewModel, this);
+                    Cursor = ViewConstants.cursorNo;
+                }
             }
             if (editState != null) {
                 editState.Begin(point.Pointer, point.Position);

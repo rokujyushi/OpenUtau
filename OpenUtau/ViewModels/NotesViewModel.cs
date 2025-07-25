@@ -30,6 +30,14 @@ namespace OpenUtau.App.ViewModels {
         }
     }
     public class WaveformRefreshEvent { }
+    public class CurveSelectionEvent {
+        public readonly int[] selectedCurves;
+        public readonly int[] tempSelectedCurves;
+        public CurveSelectionEvent(CurveSelectionViewModel selection) {
+            selectedCurves = selection.ToArray();
+            tempSelectedCurves = selection.TempSelectedIndices.ToArray();
+        }
+    }
 
     public class NotesViewModel : ViewModelBase, ICmdSubscriber {
         [Reactive] public Rect Bounds { get; set; }
@@ -103,6 +111,7 @@ namespace OpenUtau.App.ViewModels {
         private readonly ObservableAsPropertyHelper<double> smallChangeY;
 
         public readonly NoteSelectionViewModel Selection = new NoteSelectionViewModel();
+        public readonly CurveSelectionViewModel CurveSelection = new CurveSelectionViewModel();
 
         internal NotesViewModelHitTest HitTest;
         private int _lastNoteLength = 480;
@@ -318,9 +327,9 @@ namespace OpenUtau.App.ViewModels {
             SnapDivText = $"(1/{div})";
         }
 
-        private void UpdateKey(){
+        private void UpdateKey() {
             Key = userKey;
-            KeyText = "1="+MusicMath.KeysInOctave[userKey].Item1;
+            KeyText = "1=" + MusicMath.KeysInOctave[userKey].Item1;
         }
 
         public void OnXZoomed(Point position, double delta) {
@@ -457,7 +466,7 @@ namespace OpenUtau.App.ViewModels {
                 targetHeight = PortraitHeight;
             }
             int targetWidth = (int)Math.Round(targetHeight * Portrait.Size.Width / Portrait.Size.Height);
-            if(targetWidth == 0){
+            if (targetWidth == 0) {
                 targetWidth = 1;
             }
             return Portrait.CreateScaledBitmap(new PixelSize(targetWidth, targetHeight));
@@ -510,7 +519,7 @@ namespace OpenUtau.App.ViewModels {
                                 Portrait = null;
                                 portraitSource = null;
                             } else {
-                                using (var stream = new MemoryStream(data)) { 
+                                using (var stream = new MemoryStream(data)) {
                                     Portrait = ResizePortrait(new Bitmap(stream), singer.PortraitHeight);
                                     portraitSource = singer.Portrait;
                                 }
@@ -605,18 +614,21 @@ namespace OpenUtau.App.ViewModels {
             if (Selection.Move(delta)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
                 ScrollIntoView(Selection.Head!);
-            };
+            }
+            ;
         }
         public void ExtendSelection(int delta) {
             if (Selection.Resize(delta)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
                 ScrollIntoView(Selection.Head!);
-            };
+            }
+            ;
         }
         public void ExtendSelection(UNote note) {
             if (Selection.SelectTo(note)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
-            };
+            }
+            ;
         }
 
         public void MoveCursor(int delta) {
@@ -789,7 +801,7 @@ namespace OpenUtau.App.ViewModels {
             notes.Sort((a, b) => a.position.CompareTo(b.position));
             //Ignore slur lyrics
             var mergedLyrics = String.Join("", notes.Select(x => x.lyric).Where(l => !l.StartsWith("+")));
-            if(mergedLyrics == ""){ //If all notes are slur, the merged note is single slur note
+            if (mergedLyrics == "") { //If all notes are slur, the merged note is single slur note
                 mergedLyrics = notes[0].lyric;
             }
             DocManager.Inst.StartUndoGroup();
@@ -854,10 +866,72 @@ namespace OpenUtau.App.ViewModels {
             }
         }
 
+        public void SelectCurveRange(int start, int end) {
+            if (Part == null) return;
+            if (Part.curves.Count == 0) return;
+            if (CurveSelection.SelectRange(start, end)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void ResetCurveSelection() {
+            if (CurveSelection.ResetSelection()) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void MoveCurveSelectionY(int delta) {
+            if (Part == null) return;
+            var curve = Part.curves.FirstOrDefault();
+            if (curve == null) return;
+            if (CurveSelection.MoveSelectionY(curve, delta)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void MoveCurveSelectionX(int delta) {
+            if (Part == null) return;
+            var curve = Part.curves.FirstOrDefault();
+            if (curve == null) return;
+            int maxIndex = curve.xs.Count - 1;
+            if (CurveSelection.MoveSelectionX(delta, maxIndex)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void InvertCurveSelection() {
+            if (Part == null) return;
+            var curve = Part.curves.FirstOrDefault();
+            if (curve == null) return;
+            int maxIndex = curve.xs.Count - 1;
+            if (CurveSelection.InvertSelection(maxIndex)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void ScaleCurveSelectionY(double scale) {
+            if (Part == null) return;
+            var curve = Part.curves.FirstOrDefault();
+            if (curve == null) return;
+            if (CurveSelection.ScaleSelectionY(curve, scale)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
+        public void ScaleCurveSelectionX(double scale) {
+            if (Part == null) return;
+            var curve = Part.curves.FirstOrDefault();
+            if (curve == null) return;
+            int maxIndex = curve.xs.Count - 1;
+            if (CurveSelection.ScaleSelectionX(maxIndex, scale)) {
+                MessageBus.Current.SendMessage(new CurveSelectionEvent(CurveSelection));
+            }
+        }
+
         public async void PasteSelectedParams(PianoRollWindow window) {
             if (Part != null && DocManager.Inst.NotesClipboard != null && DocManager.Inst.NotesClipboard.Count > 0) {
                 var selectedNotes = Selection.ToList();
-                if(selectedNotes.Count == 0) {
+                if (selectedNotes.Count == 0) {
                     return;
                 }
 
@@ -954,7 +1028,7 @@ namespace OpenUtau.App.ViewModels {
         internal (UNote[], string[]) PrepareInsertLyrics() {
             var first = Selection.FirstOrDefault();
             var last = Selection.LastOrDefault();
-            if(Part == null){
+            if (Part == null) {
                 return (new UNote[0], new string[0]);
             }
             //If no note is selected, InsertLyrics will apply to all notes in the part.

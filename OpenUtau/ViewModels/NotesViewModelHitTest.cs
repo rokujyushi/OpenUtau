@@ -53,6 +53,15 @@ namespace OpenUtau.App.ViewModels {
         public Point point;
     }
 
+    public struct CurveHitInfo {
+        public UNote note;
+        public int Index;
+        public bool hit;
+        public bool hitStart;
+        public bool hitEnd;
+        public Point point;
+    }
+
     class NotesViewModelHitTest {
         private readonly NotesViewModel viewModel;
 
