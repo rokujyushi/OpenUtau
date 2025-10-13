@@ -33,7 +33,7 @@ namespace OpenUtau.Core.Voicevox {
                         currentLyric = string.Empty;
                     } else if (VoicevoxUtils.dic.IsDic(currentLyric)) {
                         currentLyric = VoicevoxUtils.dic.Lyrictodic(currentLyric);
-                    } else if (!VoicevoxUtils.IsDicKana(currentLyric)) {
+                    } else if (!VoicevoxUtils.IsKana(currentLyric)) {
                         currentLyric = string.Empty;
                     }
                 }

@@ -130,7 +130,7 @@ namespace OpenUtau.Core.Voicevox {
                                 } else if (!string.IsNullOrEmpty(response.Item1)) {
                                     var jObj = JObject.Parse(response.Item1);
                                     if (jObj.ContainsKey("detail")) {
-                                        Log.Error($"Failed to create the audio. : {jObj}");
+                                        Log.Error($"Voice synthesis failed with the VOICEVOX engine. : {jObj}");
                                     }
                                 }
                                 if (bytes != null) {
@@ -281,6 +281,10 @@ namespace OpenUtau.Core.Voicevox {
                     });
                     //}
                 }
+            } else {
+                throw new MessageCustomizableException(
+                    $"Failed to create a voice base. The phoneme is not supported by the VOICEVOX engine.\n{string.Join(" ", phrase.phones.Select(p => p.phoneme))}",
+                    $"You are confusing phonemes and hiragana.\n{string.Join(" ", phrase.phones.Select(p => p.phoneme))}", new VoicevoxException());
             }
 
             return vnotes;
@@ -340,7 +344,7 @@ namespace OpenUtau.Core.Voicevox {
                     frame_length = tailFrames
                 });
             } catch (Exception e) {
-                Log.Error($"Failed to create a voice base.:{e}");
+                throw new VoicevoxException("Failed to create a voice base.", e);
             }
 
             int totalFrames = 0;
@@ -469,7 +473,7 @@ namespace OpenUtau.Core.Voicevox {
                     return result;
                 }
             } catch (Exception e) {
-                Log.Error(e.Message);
+                throw new VoicevoxException("Failed to create pitch data.", e);
             }
             return null;
         }
