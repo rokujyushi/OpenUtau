@@ -10,14 +10,17 @@ namespace OpenUtau.Core.Voicevox {
     public class VoicevoxPhonemizer : Phonemizer {
 
         protected VoicevoxSinger singer;
+        string baseSingerID = VoicevoxUtils.defaultID;
         Dictionary<Note[], Phoneme[]> partResult = new Dictionary<Note[], Phoneme[]>();
 
         public override void SetSinger(USinger singer) {
             this.singer = singer as VoicevoxSinger;
+            baseSingerID = VoicevoxUtils.getBaseSingerID(this.singer);
         }
 
         public override void SetUp(Note[][] notes, UProject project, UTrack track) {
             partResult.Clear();
+            VoicevoxUtils.InitializedSpeaker(baseSingerID);
             VoicevoxNote[] vNotes = new VoicevoxNote[notes.Length];
             for (int i = 0; i < notes.Length; i++) {
                 var currentLyric = notes[i][0].lyric.Normalize();
@@ -26,7 +29,7 @@ namespace OpenUtau.Core.Voicevox {
                     currentLyric = lyricList[1];
                 }
                 if (!VoicevoxUtils.IsSyllableVowelExtensionNote(currentLyric)) {
-                    if (VoicevoxUtils.IsDicPau(currentLyric)) {
+                    if (VoicevoxUtils.IsPau(currentLyric)) {
                         currentLyric = string.Empty;
                     } else if (VoicevoxUtils.dic.IsDic(currentLyric)) {
                         currentLyric = VoicevoxUtils.dic.Lyrictodic(currentLyric);
@@ -43,22 +46,7 @@ namespace OpenUtau.Core.Voicevox {
             }
             VoicevoxQueryMain vqMain = VoicevoxUtils.NoteGroupsToVQuery(vNotes, timeAxis);
             VoicevoxSynthParams vsParams = new VoicevoxSynthParams();
-            string singerID = VoicevoxUtils.defaultID;
-            if (this.singer.voicevoxConfig.base_singer_style != null) {
-                foreach (var s in this.singer.voicevoxConfig.base_singer_style) {
-                    if (s.name.Equals(this.singer.voicevoxConfig.base_singer_name)) {
-                        vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain, s.styles.id.ToString());
-                        if (s.styles.name.Equals(this.singer.voicevoxConfig.base_singer_style_name)) {
-                            break;
-                        }
-                    } else {
-                        vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain, singerID);
-                        break;
-                    }
-                }
-            } else {
-                vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain, singerID);
-            }
+            vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain, baseSingerID);
 
             List<Phonemes> list = vsParams.phonemes;
             foreach (var note in vqMain.notes) {

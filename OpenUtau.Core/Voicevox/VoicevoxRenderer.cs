@@ -65,6 +65,7 @@ namespace OpenUtau.Core.Voicevox {
                     }
                     string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
+                    //ulong hash = HashPhraseGroups(phrase);
                     var wavPath = Path.Join(PathManager.Inst.CachePath, $"vv-{phrase.hash:x16}.wav");
                     phrase.AddCacheFile(wavPath);
                     var result = Layout(phrase);
@@ -75,7 +76,8 @@ namespace OpenUtau.Core.Voicevox {
                                 VoicevoxUtils.Loaddic(singer);
                             }
                             try {
-                                VoicevoxSynthParams vsParams = PhraseToVoicevoxSynthParams(phrase, phrase.singer as VoicevoxSinger);
+                                Log.Information($"Starting Voicevox synthesis");
+                                VoicevoxSynthParams vsParams = PhraseToVoicevoxSynthParams(phrase, phrase.singer as VoicevoxSinger, false);
 
                                 int vvTotalFrames = 0;
                                 double frameMs = (1000d / VoicevoxUtils.fps);
@@ -106,18 +108,21 @@ namespace OpenUtau.Core.Voicevox {
                                     result.positionMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos((vsParams.phonemes.First().frame_length / VoicevoxUtils.fps) * 1000d);
                                 }
 
-                                int speaker = 0;
+                                int speakerID = 0;
                                 singer.voicevoxConfig.styles.ForEach(style => {
                                     if (style.name.Equals(phrase.singer.Subbanks[1].Suffix) && style.type.Equals("frame_decode")) {
-                                        speaker = style.id;
+                                        speakerID = style.id;
                                     }
+                                    // Apply the voice color setting value
                                     if (style.name.Equals(phrase.phones[0].suffix) && style.type.Equals("frame_decode")) {
-                                        speaker = style.id;
-                                    } else if ((style.name + "_" + style.type).Equals(phrase.phones[0].suffix)) {
-                                        speaker = style.id;
+                                        speakerID = style.id;
+                                    } else // Supports styles with the same name but different types
+                                    if ((style.name + "_" + style.type).Equals(phrase.phones[0].suffix)) {
+                                        speakerID = style.id;
                                     }
                                 });
-                                var queryurl = new VoicevoxURL() { method = "POST", path = "/frame_synthesis", query = new Dictionary<string, string> { { "speaker", speaker.ToString() } }, body = JsonConvert.SerializeObject(vsParams), accept = "audio/wav" };
+                                VoicevoxUtils.InitializedSpeaker(speakerID.ToString(), false);
+                                var queryurl = new VoicevoxURL() { method = "POST", path = "/frame_synthesis", query = new Dictionary<string, string> { { "speaker", speakerID.ToString() } }, body = JsonConvert.SerializeObject(vsParams), accept = "audio/wav" };
                                 var response = VoicevoxClient.Inst.SendRequest(queryurl);
                                 byte[] bytes = null;
                                 if (!response.Item2.Equals(null)) {
@@ -125,14 +130,19 @@ namespace OpenUtau.Core.Voicevox {
                                 } else if (!string.IsNullOrEmpty(response.Item1)) {
                                     var jObj = JObject.Parse(response.Item1);
                                     if (jObj.ContainsKey("detail")) {
-                                        Log.Error($"Voice synthesis failed with the VOICEVOX engine. : {jObj}");
+                                        Log.Error($"Failed to create the audio. : {jObj}");
                                     }
                                 }
                                 if (bytes != null) {
                                     File.WriteAllBytes(wavPath, bytes);
                                 }
                             } catch (Exception e) {
-                                Log.Error(e, "Failed to create a voice base.");
+                                if (e is VoicevoxException) {
+                                    Log.Error($"Failed to create the audio.");
+                                    throw new MessageCustomizableException("Failed to create the audio.", "Failed to create the audio.", e);
+                                } else {
+                                    Log.Error($"Failed to create the audio.{e}");
+                                }
                             }
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
@@ -155,15 +165,64 @@ namespace OpenUtau.Core.Voicevox {
             return task;
         }
 
-        private VoicevoxSynthParams PhraseToVoicevoxSynthParams(RenderPhrase phrase, VoicevoxSinger singer) {
+        private VoicevoxSynthParams PhraseToVoicevoxSynthParams(RenderPhrase phrase, VoicevoxSinger singer, bool pitch_slur) {
 
-            VoicevoxSynthParams vsParams = new VoicevoxSynthParams();
             //Prepare for future additions of Teacher Singer.
             string baseSingerID = VoicevoxUtils.getBaseSingerID(singer);
+            VoicevoxUtils.InitializedSpeaker(baseSingerID, true);
+            List<VoicevoxNote> vnotes_1 = BuildVNotes(phrase, baseSingerID, false);
 
-            if (phrase.phones.All(p => VoicevoxUtils.IsDicKana(p.phoneme) || VoicevoxUtils.IsDicPau(p.phoneme))) {
+            //Match the phonemes in the synthesis parameters to the scores in the score to update F0 and volume  
+            //Create parameters for the update source. 
+            VoicevoxQueryMain vqMain_1 = VoicevoxUtils.NoteGroupsToVQuery(vnotes_1.ToArray(), phrase.timeAxis);
+            VoicevoxSynthParams vsParams = new VoicevoxSynthParams();
+            if (IsPhonemeNoteCountMatch(phrase)) {
+                vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain_1, baseSingerID);
+            } else {
+                VoicevoxSynthParams vsParams_1 = VoicevoxUtils.VoicevoxVoiceBase(vqMain_1, baseSingerID);
+
+                //Create parameters for the update destination.
+                vsParams = PhonemeToVoicevoxSynthParams(phrase);
+                VoicevoxSynthParams vsParams_2 = vsParams.Clone();
+
+                if (pitch_slur) {
+                    List<VoicevoxNote> vnotes_2 = BuildVNotes(phrase, baseSingerID, pitch_slur);
+                    VoicevoxQueryMain vqMain_2 = VoicevoxUtils.NoteGroupsToVQuery(vnotes_2.ToArray(), phrase.timeAxis);
+                    VoicevoxSynthParams vsParams_3 = VoicevoxUtils.VoicevoxVoiceBase(vqMain_2, baseSingerID);
+                } else {
+                    if (vsParams.phonemes.Count == vsParams_1.phonemes.Count) {
+                        for (int i = 0; i < vsParams_1.phonemes.Count; i++) {
+                            // TODO: Develop a VOICEVOX engine dedicated to OpenUtau so that synthesis parameters are updated when phonemes are changed.
+                            //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
+                            //if (flag != null) {
+                            //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
+                            vsParams.phonemes[i].phoneme = vsParams_1.phonemes[i].phoneme;
+                            //    }
+                            //}
+                        }
+                    }
+                    //Update F0 and volume
+                    vsParams.f0 = VoicevoxUtils.QueryToF0(vqMain_1, vsParams, baseSingerID);
+                    vsParams.volume = VoicevoxUtils.QueryToVolume(vqMain_1, vsParams, baseSingerID);
+                    //Update phoneme
+                    for (int i = 0; i < vsParams_2.phonemes.Count; i++) {
+                        //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
+                        //if (flag != null) {
+                        //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
+                        vsParams.phonemes[i].phoneme = vsParams_2.phonemes[i].phoneme;
+                        //    }
+                        //}
+                    }
+                }
+            }
+            return vsParams;
+        }
+
+        private List<VoicevoxNote> BuildVNotes(RenderPhrase phrase, string baseSingerID, bool pitch_slur) {
+            List<VoicevoxNote> vnotes = new List<VoicevoxNote>();
+
+            if (IsPhonemeNoteCountMatch(phrase)) {
                 // TODO: slur support
-                List<VoicevoxNote> vnotes = new List<VoicevoxNote>();
                 //if (slur) {
                 for (int i = 0; i < phrase.phones.Length; i++) {
                     vnotes.Add(new VoicevoxNote() {
@@ -175,87 +234,60 @@ namespace OpenUtau.Core.Voicevox {
                 }
                 //} else {
                 //}
-
-                VoicevoxQueryMain vqMain = VoicevoxUtils.NoteGroupsToVQuery(vnotes.ToArray(), phrase.timeAxis);
-
-                vsParams = VoicevoxUtils.VoicevoxVoiceBase(vqMain, baseSingerID);
-            } else if (phrase.phones.All(p => VoicevoxUtils.IsVowel(p.phoneme) || VoicevoxUtils.IsConsonant(p.phoneme))) {
-                List<VoicevoxNote> vnotes = new List<VoicevoxNote>();
+            } else {
                 for (int i = 0; i < phrase.notes.Length; i++) {
                     var durationMs = phrase.notes[i].durationMs;
                     var currentLyric = phrase.notes[i].lyric.Normalize();
                     var lyricList = currentLyric.Split(" ");
                     var shiftTone = phrase.phones[0].toneShift;
-                    if (lyricList.Length > 1) {
-                        currentLyric = lyricList[1];
-                    }
-                    if (!VoicevoxUtils.IsSyllableVowelExtensionNote(currentLyric)) {
-                        if (VoicevoxUtils.IsDicPau(currentLyric)) {
-                            currentLyric = string.Empty;
-                        } else if (VoicevoxUtils.dic.IsDic(currentLyric)) {
-                            currentLyric = VoicevoxUtils.dic.Lyrictodic(currentLyric);
-                        } else if (!VoicevoxUtils.IsDicKana(currentLyric)) {
-                            currentLyric = string.Empty;
+                    foreach (string lyric in lyricList) {
+                        if (!VoicevoxUtils.IsSyllableVowelExtensionNote(lyric)) {
+                            if (VoicevoxUtils.IsPau(lyric)) {
+                                currentLyric = string.Empty;
+                            } else if (VoicevoxUtils.dic.IsDic(lyric)) {
+                                currentLyric = VoicevoxUtils.dic.Lyrictodic(lyric);
+                            } else if (VoicevoxUtils.phoneme_List.kanas.ContainsKey(lyric)) {
+                                currentLyric = lyric;
+                            } else {
+                                currentLyric = string.Empty;
+                            }
                         }
-                    } else if (vnotes.Count >= i - 1 && 0 <= i - 1) {
-                        // TODO: slur support
-                        //if (slur) {
-                        var tempNote = vnotes[vnotes.Count - 1];
-                        tempNote.durationMs += durationMs;
-                        vnotes[vnotes.Count - 1] = tempNote;
-                        continue;
-                        //} else {
-                        //    if (VoicevoxUtils.phoneme_List.kanas.TryGetValue(vnotes[i - 1].lyric, out string str)) {
-                        //        currentLyric = str;
-                        //    }
-                        //}
                     }
+                    //if (VoicevoxUtils.IsSyllableVowelExtensionNote(currentLyric)) {
+                    //    if (vnotes.Count >= i - 1 && 0 <= i - 1) {
+                    //        // TODO: slur support
+                    //        if (pitch_slur) {
+                    //            if (VoicevoxUtils.phoneme_List.kanas.TryGetValue(vnotes[i - 1].lyric, out string str)) {
+                    //                currentLyric = str;
+                    //                vnotes.Add(new VoicevoxNote() {
+                    //                    lyric = currentLyric,
+                    //                    positionMs = phrase.notes[i].positionMs,
+                    //                    durationMs = durationMs,
+                    //                    tone = (int)(phrase.notes[i].tone + shiftTone)
+                    //                });
+                    //            }
+                    //        } else {
+                    //            var tempNote = vnotes[vnotes.Count - 1];
+                    //            tempNote.durationMs += durationMs;
+                    //            vnotes[vnotes.Count - 1] = tempNote;
+                    //        }
+                    //    }
+                    //} else {
                     vnotes.Add(new VoicevoxNote() {
                         lyric = currentLyric,
                         positionMs = phrase.notes[i].positionMs,
                         durationMs = durationMs,
                         tone = (int)(phrase.notes[i].tone + shiftTone)
                     });
-                }
-                //Match the phonemes in the synthesis parameters to the scores in the score to update F0 and volume  
-                //Create parameters for the update source. 
-                VoicevoxQueryMain vqMain = VoicevoxUtils.NoteGroupsToVQuery(vnotes.ToArray(), phrase.timeAxis);
-                VoicevoxSynthParams vsParams_1 = VoicevoxUtils.VoicevoxVoiceBase(vqMain, baseSingerID);
-
-                //Create parameters for the update destination.
-                vsParams = PhonemeToVoicevoxSynthParams(phrase);
-                VoicevoxSynthParams vsParams_2 = vsParams.Clone();
-
-
-                if (vsParams.phonemes.Count == vsParams_1.phonemes.Count) {
-                    for (int i = 0; i < vsParams_1.phonemes.Count; i++) {
-                        // TODO: Develop a VOICEVOX engine dedicated to OpenUtau so that synthesis parameters are updated when phonemes are changed.
-                        //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
-                        //if (flag != null) {
-                        //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
-                        vsParams.phonemes[i].phoneme = vsParams_1.phonemes[i].phoneme;
-                        //    }
-                        //}
-                    }
-                }
-                //Update F0 and volume
-                vsParams.f0 = VoicevoxUtils.QueryToF0(vqMain, vsParams, baseSingerID);
-                vsParams.volume = VoicevoxUtils.QueryToVolume(vqMain, vsParams, baseSingerID);
-                //Update phoneme
-                for (int i = 0; i < vsParams_2.phonemes.Count; i++) {
-                    //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
-                    //if (flag != null) {
-                    //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
-                    vsParams.phonemes[i].phoneme = vsParams_2.phonemes[i].phoneme;
-                    //    }
                     //}
                 }
-            } else {
-                throw new MessageCustomizableException(
-                    $"Failed to create a voice base. The phoneme is not supported by the VOICEVOX engine.\n{string.Join(" ", phrase.phones.Select(p => p.phoneme))}",
-                    $"You are confusing phonemes and hiragana.\n{string.Join(" ", phrase.phones.Select(p => p.phoneme))}", new VoicevoxException());
             }
-            return vsParams;
+
+            return vnotes;
+        }
+
+        private bool IsPhonemeNoteCountMatch(RenderPhrase phrase) {
+            return phrase.phones.Length == phrase.notes.Where(note => !VoicevoxUtils.IsSyllableVowelExtensionNote(note.lyric)).Count() && phrase.phones.All(p => VoicevoxUtils.phoneme_List.kanas.ContainsKey(p.phoneme));
         }
 
         private VoicevoxSynthParams PhonemeToVoicevoxSynthParams(RenderPhrase phrase) {
@@ -308,7 +340,7 @@ namespace OpenUtau.Core.Voicevox {
                     frame_length = tailFrames
                 });
             } catch (Exception e) {
-                throw new VoicevoxException("Failed to create a voice base.", e);
+                Log.Error($"Failed to create a voice base.:{e}");
             }
 
             int totalFrames = 0;
@@ -407,7 +439,7 @@ namespace OpenUtau.Core.Voicevox {
                 if (singer != null) {
 
                     string baseSingerID = VoicevoxUtils.getBaseSingerID(singer);
-                    VoicevoxSynthParams vsParams = PhraseToVoicevoxSynthParams(phrase, phrase.singer as VoicevoxSinger/*, true*/);
+                    VoicevoxSynthParams vsParams = PhraseToVoicevoxSynthParams(phrase, phrase.singer as VoicevoxSinger, true);
                     double frameMs = (1000d / VoicevoxUtils.fps);
                     int vvTotalFrames = 0;
                     vsParams.phonemes.ForEach(x => vvTotalFrames += x.frame_length);
@@ -437,9 +469,27 @@ namespace OpenUtau.Core.Voicevox {
                     return result;
                 }
             } catch (Exception e) {
-                throw new VoicevoxException("Failed to create pitch data.", e);
+                Log.Error(e.Message);
             }
             return null;
         }
+
+        ulong HashPhraseGroups(RenderPhrase phrase) {
+            using (var stream = new MemoryStream()) {
+                using (var writer = new BinaryWriter(stream)) {
+                    writer.Write(phrase.preEffectHash);
+                    writer.Write(phrase.phones[0].tone);
+                    writer.Write(phrase.phones[0].direct);
+                    if (phrase.phones[0].direct) {
+                        writer.Write(phrase.phones[0].toneShift);
+                    } else {
+                        phrase.phones.ForEach(x => writer.Write(x.toneShift));
+                    }
+                    writer.Write(phrase.phones[0].volume);
+                    return XXH64.DigestOf(stream.ToArray());
+                }
+            }
+        }
+
     }
 }

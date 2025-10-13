@@ -62,8 +62,13 @@ namespace OpenUtau.Core.Voicevox {
         public int? key;
         public int frame_length;
         public string lyric;
+        // Index for Phonemizer
         public int vqnindex;
-
+        // Index for Slur
+        public int slur_index;
+        public override string ToString() {
+            return $"vqnindex:{vqnindex}: lyric:{lyric}, key:{key}, frame_length:{frame_length}";
+        }
     }
 
     public class VoicevoxQueryMain {
@@ -180,13 +185,52 @@ namespace OpenUtau.Core.Voicevox {
         public static Dictionary_list dic = new Dictionary_list();
         public static Phoneme_list phoneme_List = new Phoneme_list();
 
-        public static VoicevoxSynthParams VoicevoxVoiceBase(VoicevoxQueryMain qNotes, string id) {
-            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_audio_query", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(qNotes) };
+        private static bool TryParseJson(string json, out JToken token) {
+            try {
+                token = JToken.Parse(json);
+                return true;
+            } catch (JsonReaderException ex) {
+                //Log.Error($"Invalid JSON: {ex.Message}");
+                token = null;
+                return false;
+            }
+        }
+
+        public static bool InitializedSpeaker(string id, bool skipReinit = false) {
+            var queryurl = new VoicevoxURL() { method = "GET", path = "/is_initialized_speaker", query = new Dictionary<string, string> { { "speaker", id } } };
+            var response = VoicevoxClient.Inst.SendRequest(queryurl);
+            var jObj = JObject.Parse(response.Item1);
+            if (jObj.ContainsKey("detail")) {
+                Log.Error($"Response was incorrect. : {jObj}");
+                return false;
+            } else if (jObj.ContainsKey("json")) {
+                if (jObj.TryGetValue("json", out var jsonToken)) {
+                    if (!jsonToken.Value<bool>()) {
+                        queryurl = new VoicevoxURL() { method = "POST", path = "/initialize_speaker", query = new Dictionary<string, string> { { "speaker", id }, { "skip_reinit", skipReinit.ToString() } } };
+                        response = VoicevoxClient.Inst.SendRequest(queryurl);
+                        if (TryParseJson(response.Item1, out var token)) {
+                            if (jObj.ContainsKey("detail")) {
+                                Log.Error($"Response was incorrect. : {jObj}");
+                            }
+                            return false;
+                        }
+                        return true;
+                    } else {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        public static VoicevoxSynthParams VoicevoxVoiceBase(VoicevoxQueryMain vqMain, string id) {
+            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_audio_query", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(vqMain) };
             var response = VoicevoxClient.Inst.SendRequest(queryurl);
             VoicevoxSynthParams vvNotes;
             var jObj = JObject.Parse(response.Item1);
             if (jObj.ContainsKey("detail")) {
                 Log.Error($"Response was incorrect. : {jObj}");
+                throw new VoicevoxException($"Response was incorrect. : \n{jObj}\nScore:{string.Join(" ", vqMain.notes.Select(n => n.lyric))}");
             } else {
                 vvNotes = jObj.ToObject<VoicevoxSynthParams>();
                 return vvNotes;
@@ -198,7 +242,7 @@ namespace OpenUtau.Core.Voicevox {
             dic.Loaddic(singer.Location);
         }
 
-        public static VoicevoxQueryMain NoteGroupsToVQuery(VoicevoxNote[] vNotes, TimeAxis timeAxis) {
+        public static VoicevoxQueryMain NoteGroupsToVQuery(VoicevoxNote[] vNotes, TimeAxis timeAxis, bool pitch_slur = false) {
             VoicevoxQueryMain vqMain = new VoicevoxQueryMain();
             int index = 0;
             try {
@@ -209,15 +253,35 @@ namespace OpenUtau.Core.Voicevox {
                     vqnindex = -1
                 });
                 int short_length_count = 0;
+                int slur_index = 0;
                 while (index < vNotes.Length) {
                     string lyric = dic.Notetodic(vNotes, index);
-                    //Avoid synthesis without at least two frames.
                     double durationMs = vNotes[index].durationMs;
+                    // TODO: slur support
+                    if (IsSyllableVowelExtensionNote(vNotes[index].lyric)) {
+                        // ピッチ生成でスラーを考慮する場合、母音伸ばしノートは前のノートのカナを引き継ぐ
+                        if (pitch_slur) {
+                            if (vNotes.Length >= index - 1 && 0 <= index - 1) {
+                                if (VoicevoxUtils.phoneme_List.kanas.TryGetValue(vNotes[index - 1].lyric, out string str)) {
+                                    lyric = str;
+                                    slur_index++;
+                                }
+                            } else {
+                                slur_index = 0;
+                            }
+                        } else {
+                            // 通常合成ではスラー分の長さを前のノートに足す
+                            durationMs += vNotes[index - 1].durationMs;
+                        }
+                    }
                     int length = (int)Math.Round((durationMs / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
+                    //Avoid synthesis without at least two frames.
                     if (length < 2) {
                         length = 2;
                     }
+
                     if (durationMs > (length / VoicevoxUtils.fps) * 1000f) {
+                        // If the note length is longer than the rounded length, increase the length by one.
                         if (short_length_count >= 2) {
                             length += 1;
                             short_length_count = 0;
@@ -225,17 +289,21 @@ namespace OpenUtau.Core.Voicevox {
                             short_length_count += 1;
                         }
                     }
+
+                    //Set tone to null if lyric is empty
                     int? tone = null;
                     if (!string.IsNullOrEmpty(lyric)) {
                         tone = vNotes[index].tone;
                     } else {
+                        // 明示的に空文字を設定する。
                         lyric = "";
                     }
                     vqMain.notes.Add(new VoicevoxQueryNotes {
                         lyric = lyric,
                         frame_length = length,
                         key = tone,
-                        vqnindex = index
+                        vqnindex = index,
+                        slur_index = slur_index
                     });
                     index++;
                 }
@@ -253,13 +321,14 @@ namespace OpenUtau.Core.Voicevox {
         }
 
         public static List<double> QueryToF0(VoicevoxQueryMain vqMain, VoicevoxSynthParams vsParams, string id) {
-            VoicevoxQueryParams vqParams = new VoicevoxQueryParams() { score = vqMain, frame_audio_query = vsParams }; 
+            VoicevoxQueryParams vqParams = new VoicevoxQueryParams() { score = vqMain, frame_audio_query = vsParams };
             var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_f0", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(vqParams) };
             var response = VoicevoxClient.Inst.SendRequest(queryurl);
             List<double> f0s = new List<double>();
             var jObj = JObject.Parse(response.Item1);
             if (jObj.ContainsKey("detail")) {
                 Log.Error($"Response was incorrect. : {jObj}");
+                throw new VoicevoxException($"Response was incorrect. : \n{jObj}\nScore:{string.Join(" ", vqMain.notes.Select(n => n.lyric))}");
             } else {
                 f0s = jObj["json"].ToObject<List<double>>();
             }
@@ -274,6 +343,7 @@ namespace OpenUtau.Core.Voicevox {
             var jObj = JObject.Parse(response.Item1);
             if (jObj.ContainsKey("detail")) {
                 Log.Error($"Response was incorrect. : {jObj}");
+                throw new VoicevoxException($"Response was incorrect. : \n{jObj}\nScore:{string.Join(" ", vqMain.notes.Select(n => n.lyric))}");
             } else {
                 volumes = jObj["json"].ToObject<List<double>>();
             }
@@ -312,7 +382,7 @@ namespace OpenUtau.Core.Voicevox {
             return phoneme_List.kanas.ContainsKey(s);
         }
 
-        public static bool IsDicPau(string s) {
+        public static bool IsPau(string s) {
             return phoneme_List.paus.ContainsKey(s);
         }
 
