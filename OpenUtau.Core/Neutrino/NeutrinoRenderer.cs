@@ -322,42 +322,57 @@ namespace OpenUtau.Core.Neutrino {
         protected void ProcessPart(RenderPhrase phrase) {
             timeAxis = phrase.timeAxis;
 
-            int offsetTick = phrase.position;
-            int sentenceDurMs = paddingMs + (int)timeAxis.MsBetweenTickPos(
-                phrase.position, phrase.end);
-            int sentenceDurTicks = phrase.end - phrase.position;
-            int paddingTicks = timeAxis.MsPosToTickPos(paddingMs);
-            var notePhIndex = new List<int> { 1 };//每个音符的第一个音素在音素列表上对应的位置
-            var phAlignPoints = new List<Tuple<int, double>>();//音素对齐的位置，Ms，绝对时间
-            UTimeSignature sig = timeAxis.TimeSignatureAtTick(phrase.position - paddingTicks);
-            timeAxis.TickPosToBarBeat(phrase.position - paddingTicks, out int bar, out int beat, out int remainingTicks);
-            HTSNote PaddingNote = new HTSNote(
+            int startTick = phrase.position;
+            int endTick = phrase.position + phrase.duration;
+
+            // パディングを小節長で設定（開始・終了ともに1小節）
+            var sigStart = timeAxis.TimeSignatureAtTick(startTick);
+            double bpmStart = timeAxis.GetBpmAtTick(startTick);
+            int barLenMsStart = (int)Math.Round((60000.0 / bpmStart) * sigStart.beatPerBar);
+            int barLenTicksStart = timeAxis.MsPosToTickPos(barLenMsStart);
+
+            var sigEnd = timeAxis.TimeSignatureAtTick(endTick);
+            double bpmEnd = timeAxis.GetBpmAtTick(endTick);
+            int barLenMsEnd = (int)Math.Round((60000.0 / bpmEnd) * sigEnd.beatPerBar);
+            int barLenTicksEnd = timeAxis.MsPosToTickPos(barLenMsEnd);
+
+            // 文全体の長さ（開始1小節 + 本体 + 終了1小節）
+            int sentenceDurMs = barLenMsStart + (int)timeAxis.MsBetweenTickPos(startTick, endTick) + barLenMsEnd;
+            int sentenceDurTicks = barLenTicksStart + (endTick - startTick) + barLenTicksEnd;
+
+            int noteIndexAnchorOffset = 1; // 先頭パディング分
+            var notePhIndex = new List<int> { noteIndexAnchorOffset };
+            var phAlignPoints = new List<Tuple<int, double>>();
+
+            // 先頭パディング pau
+            timeAxis.TickPosToBarBeat(startTick - barLenTicksStart, out int barStart, out int beatStart, out int _);
+            var sigForPadStart = timeAxis.TimeSignatureAtTick(startTick - barLenTicksStart);
+            HTSNote PaddingNoteStart = new HTSNote(
                 symbols: new string[] { "pau" },
-                beatPerBar: sig.beatPerBar,
-                beatUnit: sig.beatUnit,
-                positionBar: bar,
-                positionBeat: beat,
+                beatPerBar: sigForPadStart.beatPerBar,
+                beatUnit: sigForPadStart.beatUnit,
+                positionBar: barStart,
+                positionBeat: beatStart,
                 key: key,
-                bpm: timeAxis.GetBpmAtTick(phrase.position - paddingTicks),
+                bpm: timeAxis.GetBpmAtTick(startTick - barLenTicksStart),
                 tone: 0,
                 isSlur: false,
                 isRest: true,
-                lang: string.Empty,//TODO:Does the pau not have language information?
+                lang: string.Empty,
                 accent: string.Empty,
                 startms: 0,
-                endms: paddingMs,
-                positionTicks: phrase.position - paddingTicks,
-                durationTicks: paddingTicks
+                endms: barLenMsStart,
+                positionTicks: startTick - barLenTicksStart,
+                durationTicks: barLenTicksStart
             );
-            //convert OpenUtau notes to HTS Labels
-            var htsNotes = new List<HTSNote> { PaddingNote };
+            var htsNotes = new List<HTSNote> { PaddingNoteStart };
             var htsPhonemes = new List<HTSPhoneme>();
-            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNote));
+            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteStart));
 
             //Alignment
             for (int noteIndex = 0; noteIndex < phrase.notes.Length; ++noteIndex) {
                 var phonemes = phrase.phones.Where(ph => ph.noteIndex == noteIndex).Select(ph => ph.phoneme).ToArray();
-                HTSNote htsNote = makeHtsNote(phonemes, phrase.notes[noteIndex], offsetTick);
+                HTSNote htsNote = makeHtsNote(phonemes, phrase.notes[noteIndex], startTick);
                 htsNotes.Add(htsNote);
                 var tmpPhonemes = HTSNoteToPhonemes(htsNote);
                 var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase.notes[noteIndex]) ?? tmpPhonemes;
@@ -376,20 +391,41 @@ namespace OpenUtau.Core.Neutrino {
                 htsPhonemes.AddRange(notePhonemes);
                 notePhIndex.Add(htsPhonemes.Count);
             }
+            // 終端パディング pau（位置は「本当の曲末」tick）
+            timeAxis.TickPosToBarBeat(endTick, out int barEnd, out int beatEnd, out int _);
+            HTSNote PaddingNoteEnd = new HTSNote(
+                symbols: new string[] { "pau" },
+                beatPerBar: sigEnd.beatPerBar,
+                beatUnit: sigEnd.beatUnit,
+                positionBar: barEnd,
+                positionBeat: beatEnd,
+                key: key,
+                bpm: bpmEnd,
+                tone: 0,
+                isSlur: false,
+                isRest: true,
+                lang: string.Empty,
+                accent: string.Empty,
+                // 絶対msで末尾に配置
+                startms: sentenceDurMs - barLenMsEnd,
+                endms: sentenceDurMs,
+                positionTicks: endTick,
+                durationTicks: barLenTicksEnd
+            );
+            htsNotes.Add(PaddingNoteEnd);
+            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteEnd));
 
-            //htsNotes.Add(PaddingNote);//add padding note to the end of htsNotes
-            //htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNote));
-
+            // 末尾アンカーは「曲末＋終端パディング」位置
             var lastNote = htsNotes[^1];
-            phAlignPoints.Add(new Tuple<int, double>(
+            phAlignPoints.Add(Tuple.Create(
                 htsPhonemes.Count,
-                timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks)));
-
-
+                timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks) + barLenMsStart // = sentenceDurMs
+            ));
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
             htsPhrase.resolution = resolution;
-            htsPhrase.totalNotes = htsNotes.Count;
-            htsPhrase.totalPhonemes = htsPhonemes.Count;
+            htsPhrase.totalNotes = htsNotes.Count - 1;
+            htsPhrase.totalPhonemes = htsPhonemes.Count - 1;
+            htsPhrase.totalPhrases = 1;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].parent = htsPhrase;
