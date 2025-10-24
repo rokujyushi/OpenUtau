@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 
 //This file implement utaupy.hts python library's function
-//https://github.com/oatsu-gh/utaupy/blob/master/utaupy/hts.py
+//https://github.com/oatsu-gh/utaupy/hts.py
 
 //HTS labels use b instead of #
 //In HTS labels, "xx" is a preserved keyword that means null
@@ -59,7 +59,6 @@ namespace OpenUtau.Core.Util {
             return 12 * (octave + 1) + inOctave;
         }
 
-        //write integer with "p" as positive and "n" as negative. 0 is "p0"
         public static string WriteInt(int integer) {
             return (integer >= 0 ? "p" : "m") + Math.Abs(integer).ToString();
         }
@@ -106,9 +105,9 @@ namespace OpenUtau.Core.Util {
 
         public string dump() {
             //Write phoneme as an HTS line
-
+            // 100ns単位出力時にintオーバーフローを避けるためlongへ
             string result =
-                $"{parent.startMs * 100000} {parent.endMs * 100000} "
+                $"{(long)parent.startMs * 10000} {(long)parent.endMs * 10000} "
                 //Phoneme informations
                 + string.Format("{0}@{1}^{2}-{3}+{4}={5}_{6}%{7}^{8}_{9}~{10}-{11}!{12}[{13}${14}]{15}", p())
                 //Syllable informations
@@ -177,28 +176,28 @@ namespace OpenUtau.Core.Util {
 
         public string[] g() {
             var result = parent.g();
-            if (!type.Equals("p")) {
+            if (type.Equals("p")) {
                 result[0] = "xx";
                 result[1] = "xx";
-            }
+        }
             return result;
         }
 
         public string[] h() {
             var result = parent.h();
-            if (!type.Equals("p")) {
+            if (type.Equals("p")) {
                 result[0] = "xx";
                 result[1] = "xx";
-            }
+        }
             return result;
         }
 
         public string[] i() {
             var result = parent.i();
-            if (!type.Equals("p")) {
+            if (type.Equals("p")) {
                 result[0] = "xx";
                 result[1] = "xx";
-            }
+        }
             return result;
         }
 
@@ -327,29 +326,53 @@ namespace OpenUtau.Core.Util {
             result[0] = HTS.GetToneName(tone);
             result[1] = HTS.GetOctaveNum(tone);
             result[2] = key.ToString();
-            result[3] = $"{beatPerBar}/{beatUnit}";//beat
-            result[4] = bpm.ToString();//tempo
-            result[5] = "1";//number_of_syllables
-            result[6] = ((durationMs + 5) / 10).ToString();//duration in 10ms
-            result[7] = ((durationTicks + 10) / 20).ToString(); //length in 96th note, or 20 ticks
+            result[3] = $"{beatPerBar}/{beatUnit}";
+            result[4] = bpm.ToString();
+            result[5] = "1";
 
-            result[9] = measureIndexForward != null ? measureIndexForward.ToString() : "xx";
-            result[10] = measureIndexBackward != null ? measureIndexBackward.ToString() : "xx";
-            result[11] = measureMsForward != null ? measureMsForward.ToString() : "xx";
-            result[12] = measureMsBackward != null ? measureMsBackward.ToString() : "xx";
-            result[13] = measureTickForward != null ? measureTickForward.ToString() : "xx";
-            result[14] = measureTickBackward != null ? measureTickBackward.ToString() : "xx";
-            result[15] = measurePercentForward != null ? measurePercentForward.ToString() : "xx";
-            result[16] = measurePercentBackward != null ? measurePercentBackward.ToString() : "xx";
+            int lengthCs = Math.Max(0, (int)Math.Round(durationMs / 10.0));
+            int ticksPer96th = (parent != null && parent.resolution > 0) ? parent.resolution / 24 : 0;
+            int length96 = (ticksPer96th > 0) ? (int)Math.Round((double)durationTicks / ticksPer96th) : 0;
+            result[6] = lengthCs.ToString();
+            result[7] = length96.ToString();
 
-            result[17] = index <= 0 ? "xx" : index.ToString();//index of note in sentence
+            result[9]  = measureIndexForward != null ? measureIndexForward.ToString() : "xx";   // e10
+            result[10] = measureIndexBackward != null ? measureIndexBackward.ToString() : "xx"; // e11
+            result[11] = measureMsForward != null ? measureMsForward.ToString() : "xx";         // e12 (centisecond already)
+            result[12] = measureMsBackward != null ? measureMsBackward.ToString() : "xx";       // e13
+            result[13] = measureTickForward != null ? measureTickForward.ToString() : "xx";     // e14 (96th already)
+            result[14] = measureTickBackward != null ? measureTickBackward.ToString() : "xx";   // e15
+            result[15] = measurePercentForward != null ? measurePercentForward.ToString() : "xx"; // e16
+            result[16] = measurePercentBackward != null ? measurePercentBackward.ToString() : "xx"; // e17
+
+            result[17] = index <= 0 ? "xx" : index.ToString();
             result[18] = indexBackwards <= 0 ? "xx" : indexBackwards.ToString();
-            result[19] = ((startMs + 50) / 100).ToString();//position in 100ms
+            result[19] = ((startMs + 50) / 100).ToString(); // 100ms単位
             result[20] = ((startMsBackwards + 50) / 100).ToString();
-            result[21] = ((positionTicks + 10) / 20).ToString();
-            result[22] = ((positionTickBackwards + 10) / 20).ToString();
-            result[23] = ((startMs / sentenceDurMs) * 100).ToString();
-            result[24] = (100 - ((startMs / sentenceDurMs) * 100)).ToString();
+
+            // e22/e23: phrase-level position by 96th note, resolution independent
+            if (ticksPer96th > 0 && parent != null && parent.notes != null && index > 0) {
+                int forwardTicks = 0;
+                int idx = Math.Min(index - 1, parent.notes.Length - 1);
+                for (int i = 0; i < idx; i++) {
+                    forwardTicks += parent.notes[i].durationTicks;
+                }
+                int backwardTicks = Math.Max(0, sentenceDurTicks - forwardTicks);
+                result[21] = ((forwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
+                result[22] = ((backwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
+            } else {
+                result[21] = "xx";
+                result[22] = "xx";
+            }
+
+            if (sentenceDurMs > 0) {
+                result[23] = ((startMs * 100) / sentenceDurMs).ToString();
+                result[24] = (100 - ((startMs * 100) / sentenceDurMs)).ToString();
+            } else {
+                result[23] = "xx";
+                result[24] = "xx";
+            }
+
             if (prev == null) {
                 result[25] = "0";
             } else if (!prev.isRest) {
@@ -361,12 +384,13 @@ namespace OpenUtau.Core.Util {
                 result[26] = next.isSlur ? "1" : "0";
             }
             result[27] = "n";
-            result[28] = accentIndexForward != null && !string.IsNullOrEmpty(accent) ? accentIndexForward.ToString() : "xx";
-            result[29] = accentIndexBackward != null && !string.IsNullOrEmpty(accent) ? accentIndexForward.ToString() : "xx";
-            result[30] = accentMsForward != null && !string.IsNullOrEmpty(accent) ? accentMsForward.ToString() : "xx";
-            result[31] = accentMsBackward != null && !string.IsNullOrEmpty(accent) ? accentMsBackward.ToString() : "xx";
-            result[32] = accentTickForward != null && !string.IsNullOrEmpty(accent) ? accentTickForward.ToString() : "xx";
-            result[33] = accentTickBackward != null && !string.IsNullOrEmpty(accent) ? accentTickBackward.ToString() : "xx";
+            result[28] = accentIndexBackward.HasValue ? accentIndexBackward.Value.ToString() : "xx";
+            result[29] = accentIndexForward.HasValue ? accentIndexForward.Value.ToString() : "xx";
+            result[30] = accentMsBackward.HasValue ? ((int)Math.Round(accentMsBackward.Value / 10.0)).ToString() : "xx";
+            result[31] = accentMsForward.HasValue ? ((int)Math.Round(accentMsForward.Value / 10.0)).ToString() : "xx";
+            result[32] = (accentTickBackward.HasValue && ticksPer96th > 0) ? ((int)Math.Round((double)accentTickBackward.Value / ticksPer96th)).ToString() : "xx";
+            result[33] = (accentTickForward.HasValue && ticksPer96th > 0) ? ((int)Math.Round((double)accentTickForward.Value / ticksPer96th)).ToString() : "xx";
+
             if (this.tone > 0) {
                 result[56] = (prev == null || prev.tone <= 0) ? "p0" : HTS.WriteInt(prev.tone - tone);
                 result[57] = (next == null || next.tone <= 0) ? "p0" : HTS.WriteInt(next.tone - tone);
@@ -414,189 +438,126 @@ namespace OpenUtau.Core.Util {
 
         public HTSPhrase(HTSNote[] notes) {
             this.notes = notes;
-            //int forwardDurTickSum = 0;
-            //int forwardDurMsSum = 0;
+
+            // アクセント（forward）
             int accentIndexForwardSum = 0;
             int accentMsForwardSum = 0;
             int accentTickForwardSum = 0;
-            int tempBarForward = 0;
-            int tempBeatForward = 0;
-            int tempPositionBarForward = 0;
-            List<List<HTSNote>> noteGroupsForward = new List<List<HTSNote>>();
-            List<HTSNote> currentGroupForward = new List<HTSNote>();
             for (int i = 0; i < notes.Length; i++) {
-                HTSNote note = notes[i];
-
-                //if (note.isRest) {
-                //    result[21] = "xx";
-                //    forwardDurTickSum = 0;
-                //} else if (note.index == 1) {
-                //    result[21] = "0";
-                //    forwardDurTickSum += note.durationTicks;
-                //} else {
-                //    result[21] = forwardDurTickSum.ToString();
-                //    forwardDurTickSum += note.durationTicks;
-                //}
-                //if (note.isRest) {
-                //    forwardDurMsSum = 0;
-                //} else if (note.index == 1) {
-                //    forwardDurMsSum = 0;
-                //    note.startMsPercent = ((forwardDurMsSum / note.sentenceDurMs) * 100);
-                //    result[23] = note.startMsPercent.ToString();
-                //    forwardDurMsSum += note.durationMs;
-                //} else {
-                //    note.startMsPercent = ((forwardDurMsSum / note.sentenceDurMs) * 100);
-                //    result[23] = note.startMsPercent.ToString();
-                //    forwardDurMsSum += note.durationMs;
-                //}
-
+                var note = notes[i];
                 if (note.isRest) {
                     accentIndexForwardSum = 0;
+                    accentMsForwardSum = 0;
+                    accentTickForwardSum = 0;
                 } else if (!string.IsNullOrEmpty(note.accent)) {
                     accentIndexForwardSum = 0;
                     note.accentIndexForward = accentIndexForwardSum;
                     accentIndexForwardSum += 1;
-                } else if (accentIndexForwardSum != 0) {
-                    note.accentIndexForward = accentIndexForwardSum;
-                    accentIndexForwardSum += 1;
-                }
-                if (note.isRest) {
-                    accentMsForwardSum = 0;
-                } else if (!string.IsNullOrEmpty(note.accent)) {
+
                     accentMsForwardSum = 0;
                     note.accentMsForward = accentMsForwardSum;
                     accentMsForwardSum += note.durationMs;
-                } else if (accentMsForwardSum != 0) {
-                    note.accentMsForward = accentMsForwardSum;
-                    accentMsForwardSum += note.durationMs;
-                }
-                if (note.isRest) {
-                    accentTickForwardSum = 0;
-                } else if (!string.IsNullOrEmpty(note.accent)) {
+
                     accentTickForwardSum = 0;
                     note.accentTickForward = accentTickForwardSum;
-                    accentTickForwardSum += note.durationMs;
-                } else if (accentTickForwardSum != 0) {
-                    note.accentTickForward = accentTickForwardSum;
-                    accentTickForwardSum += note.durationMs;
-                }
-                if (note.beatPerBar != tempBarForward || note.beatPerBar != tempBarForward || note.beatUnit != tempBeatForward) {
-                    tempBarForward = note.beatPerBar;
-                    tempBeatForward = note.beatUnit;
-                    tempPositionBarForward = note.positionBar;
-                    if (currentGroupForward.Count > 0) {
-                        noteGroupsForward.Add(currentGroupForward);
+                    accentTickForwardSum += note.durationTicks; // ticks で累積
+                } else {
+                    if (accentIndexForwardSum != 0) {
+                        note.accentIndexForward = accentIndexForwardSum;
+                        accentIndexForwardSum += 1;
                     }
-                    currentGroupForward = new List<HTSNote>();
-                }
-                if (note.positionBar == tempBarForward) {
-                    currentGroupForward.Add(note);
-                }
-            }
-            int indexForwardSum = 0;
-            int msForwardsSum = 0;
-            int tickForwardSum = 0;
-            foreach (var noteGs in noteGroupsForward) {
-                int totalDurationMs = noteGs.Sum(note => note.durationMs);
-                indexForwardSum = 0;
-                msForwardsSum = 0;
-                tickForwardSum = 0;
-                foreach (var note in noteGs) {
-                    note.measureIndexForward = indexForwardSum;
-                    indexForwardSum += 1;
-                    note.measureMsForward = msForwardsSum;
-                    msForwardsSum += note.durationMs;
-                    note.measureTickForward = tickForwardSum;
-                    tickForwardSum += note.durationTicks;
-                    note.measurePercentForward = (note.startMs / totalDurationMs) * 100;
+                    if (accentMsForwardSum != 0) {
+                        note.accentMsForward = accentMsForwardSum;
+                        accentMsForwardSum += note.durationMs;
+                    }
+                    if (accentTickForwardSum != 0) {
+                        note.accentTickForward = accentTickForwardSum;
+                        accentTickForwardSum += note.durationTicks; // ticks で累積
+                    }
                 }
             }
-            //int backwardDurTickSum = 0;
+
+            // アクセント（backward）
             int accentIndexBackwardSum = 0;
             int accentMsBackwardSum = 0;
             int accentTickBackwardSum = 0;
-            int tempBarBackward = 0;
-            int tempBeatBackward = 0;
-            int tempPositionBarBackward = 0;
-            List<List<HTSNote>> noteGroupsBackward = new List<List<HTSNote>>();
-            List<HTSNote> currentGroupBackward = new List<HTSNote>();
+            int lastAccentIndexContribution = 0;
+            int lastAccentMs = 0;
+            int lastAccentTicks = 0;
             for (int i = notes.Length - 1; i >= 0; i--) {
-                HTSNote note = notes[i];
-                //if (note.isRest) {
-                //    backwardDurTickSum = 0;
-                //} else if (note.indexBackwards == 1) {
-                //    backwardDurTickSum = ((note.durationTicks + 10) / 20);
-                //    result[22] = backwardDurTickSum.ToString();
-                //} else {
-                //    backwardDurTickSum += ((note.durationTicks + 10) / 20);
-                //    result[22] = backwardDurTickSum.ToString();
-                //}
-
-                //if (note.isRest) {
-                //    forwardDurMsSum = 0;
-                //} else {
-                //    result[24] = (100 - note.startMsPercent).ToString();
-                //}
-
+                var note = notes[i];
                 if (note.isRest) {
                     accentIndexBackwardSum = 0;
-                } else if (note.indexBackwards == 1) {
-                    accentIndexBackwardSum = 0;
-                    note.accentIndexForward = accentIndexBackwardSum;
-                    accentIndexBackwardSum += 1;
+                    accentMsBackwardSum = 0;
+                    accentTickBackwardSum = 0;
+                    lastAccentIndexContribution = 0;
+                    lastAccentMs = 0;
+                    lastAccentTicks = 0;
+                } else if (!string.IsNullOrEmpty(note.accent)) {
+                    note.accentIndexBackward = Math.Max(0, accentIndexBackwardSum - lastAccentIndexContribution);
+                    note.accentMsBackward = Math.Max(0, accentMsBackwardSum - lastAccentMs);
+                    note.accentTickBackward = Math.Max(0, accentTickBackwardSum - lastAccentTicks);
+
+                    lastAccentIndexContribution = 1;
+                    lastAccentMs = note.durationMs;
+                    lastAccentTicks = note.durationTicks;
+
+                    accentIndexBackwardSum = 1;
+                    accentMsBackwardSum = note.durationMs;
+                    accentTickBackwardSum = note.durationTicks;
                 } else {
-                    note.accentIndexForward = accentIndexBackwardSum;
+                    note.accentIndexBackward = accentIndexBackwardSum;
+                    note.accentMsBackward = accentMsBackwardSum;
+                    note.accentTickBackward = accentTickBackwardSum;
+
                     accentIndexBackwardSum += 1;
-                }
-                if (note.isRest) {
-                    accentMsBackwardSum = 0;
-                } else if (!string.IsNullOrEmpty(note.accent)) {
-                    accentMsBackwardSum = 0;
-                    note.accentMsBackward = accentMsBackwardSum;
                     accentMsBackwardSum += note.durationMs;
-                } else if (accentMsBackwardSum != 0) {
-                    note.accentMsBackward = accentMsBackwardSum;
-                    accentMsBackwardSum += note.durationMs;
-                }
-                if (note.isRest) {
-                    accentTickBackwardSum = 0;
-                } else if (!string.IsNullOrEmpty(note.accent)) {
-                    accentTickBackwardSum = 0;
-                    note.accentTickBackward = accentTickBackwardSum;
-                    accentTickBackwardSum += note.durationMs;
-                } else if (accentTickBackwardSum != 0) {
-                    note.accentTickBackward = accentTickBackwardSum;
-                    accentTickBackwardSum += note.durationMs;
-                }
-                if (note.beatPerBar != tempBarBackward || note.beatPerBar != tempBarBackward || note.beatUnit != tempBeatBackward) {
-                    tempBarBackward = note.beatPerBar;
-                    tempBeatBackward = note.beatUnit;
-                    tempPositionBarBackward = note.positionBar;
-                    if (currentGroupBackward.Count > 0) {
-                        noteGroupsBackward.Add(currentGroupBackward);
-                    }
-                    currentGroupBackward = new List<HTSNote>();
-                }
-                if (note.positionBar == tempBarBackward) {
-                    currentGroupBackward.Add(note);
+                    accentTickBackwardSum += note.durationTicks;
                 }
             }
-            int indexBackwardSum = 0;
-            int msBackwardsSum = 0;
-            int tickBackwardSum = 0;
-            foreach (var noteGs in noteGroupsForward) {
-                int totalDurationMs = noteGs.Sum(note => note.durationMs);
-                indexBackwardSum = 0;
-                msBackwardsSum = 0;
-                tickBackwardSum = 0;
-                foreach (var note in noteGs) {
-                    note.measureIndexBackward = indexBackwardSum;
-                    indexBackwardSum += 1;
-                    note.measureMsBackward = msBackwardsSum;
-                    msBackwardsSum += note.durationMs;
-                    note.measureTickBackward = tickBackwardSum;
-                    tickBackwardSum += note.durationTicks;
-                    note.measurePercentBackward = (note.startMs / totalDurationMs) * 100;
+
+            // 小節ごとのグルーピング（positionBar 基準）
+            var groups = notes
+                .GroupBy(n => n.positionBar)
+                .OrderBy(g => g.Key)
+                .Select(g => g.OrderBy(n => n.positionTicks).ToList())
+                .ToList();
+
+            int ticksPer96th = (resolution > 0) ? (resolution / 24) : 0;
+
+            foreach (var group in groups) {
+                int totalDurationMs = group.Sum(n => n.durationMs);
+                int totalDurationTicks = group.Sum(n => n.durationTicks);
+
+                // forward（小節先頭からの位置）
+                int idxF = 1;
+                int accMsF = 0;
+                int accTicksF = 0;
+                foreach (var note in group) {
+                    note.measureIndexForward = idxF;
+                    note.measureMsForward = (int)Math.Round(accMsF / 100.0);
+                    note.measureTickForward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksF / ticksPer96th / 10) : 0;
+                    note.measurePercentForward = totalDurationMs > 0 ? (accMsF * 100) / totalDurationMs : 0;
+
+                    idxF += 1;
+                    accMsF += note.durationMs;
+                    accTicksF += note.durationTicks;
+                }
+
+                // backward
+                int idxB = 1;
+                int accMsB = 0;
+                int accTicksB = 0;
+                for (int i = group.Count - 1; i >= 0; --i) {
+                    var note = group[i];
+                    note.measureIndexBackward = idxB;
+                    note.measureMsBackward = (int)Math.Round(accMsB / 100.0);
+                    note.measureTickBackward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksB / ticksPer96th / 10) : 0;
+                    note.measurePercentBackward = totalDurationMs > 0 ? (accMsB * 100) / totalDurationMs : 0;
+
+                    idxB += 1;
+                    accMsB += note.durationMs;
+                    accTicksB += note.durationTicks;
                 }
             }
         }
