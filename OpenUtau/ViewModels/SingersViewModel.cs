@@ -114,9 +114,7 @@ namespace OpenUtau.App.ViewModels {
                                 IsChecked = singer.TextFileEncoding == encoding,
                             }
                         ).ToList();
-                        var singerTypes = new string[] {
-                            "utau", "enunu", "diffsinger", "voicevox"
-                        };
+                        string[] singerTypes = SingerTypeUtils.SingerTypeFromName.Keys.ToArray();
                         setSingerTypeMenuItems = singerTypes.Select(singerType =>
                             new MenuItemViewModel() {
                                 Header = singerType,
