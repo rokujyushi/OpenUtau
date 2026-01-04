@@ -947,6 +947,8 @@ namespace OpenUtau.App.Views {
                             editState = new CurveSelectionState(control, ViewModel, this, descriptor);
                             break;
                         case CurveTools.CurvePenTool:
+                        case CurveTools.CurveHorizontalLineTool:
+                        case CurveTools.CurveLineTool:
                             ViewModel.CurveViewModel.ClearSelect();
                             editState = new ExpSetValueState(control, ViewModel, this, descriptor);
                             break;
@@ -985,7 +987,39 @@ namespace OpenUtau.App.Views {
                 valueTipPointerPosition = args.GetCurrentPoint(ValueTipCanvas!).Position;
             }
             if (editState != null) {
-                editState.Update(point.Pointer, point.Position, args);
+                switch (ViewModel.CurveViewModel.CurveTool) {
+                    case CurveTools.CurveHorizontalLineTool: {
+                            var shiftedArgs = new PointerEventArgs(
+                                InputElement.PointerMovedEvent, // RoutedEvent
+                                control,                            // source
+                                point.Pointer,                      // pointer
+                                control,                            // visual
+                                point.Position,                     // point
+                                args.Timestamp,                     // timestamp
+                                point.Properties,                   // properties
+                                KeyModifiers.Shift                  // keyModifiers
+                            );
+                            editState.Update(point.Pointer, point.Position, shiftedArgs);
+                        }
+                        break;
+                    case CurveTools.CurveLineTool: {
+                            var shiftedArgs = new PointerEventArgs(
+                                InputElement.PointerMovedEvent, // RoutedEvent
+                                control,                            // source
+                                point.Pointer,                      // pointer
+                                control,                            // visual
+                                point.Position,                     // point
+                                args.Timestamp,                     // timestamp
+                                point.Properties,                   // properties
+                                KeyModifiers.Shift | cmdKey         // keyModifiers
+                            );
+                            editState.Update(point.Pointer, point.Position, shiftedArgs);
+                        }
+                        break;
+                    default:
+                        editState.Update(point.Pointer, point.Position, args);
+                        break;
+                }
             } else {
                 Cursor = null;
             }
@@ -1000,7 +1034,39 @@ namespace OpenUtau.App.Views {
             }
             var control = (Control)sender;
             var point = args.GetCurrentPoint(control);
-            editState.Update(point.Pointer, point.Position, args);
+            switch (ViewModel.CurveViewModel.CurveTool) {
+                case CurveTools.CurveHorizontalLineTool: {
+                        var shiftedArgs = new PointerEventArgs(
+                            InputElement.PointerMovedEvent, // RoutedEvent
+                            control,                            // source
+                            point.Pointer,                      // pointer
+                            control,                            // visual
+                            point.Position,                     // point
+                            args.Timestamp,                     // timestamp
+                            point.Properties,                   // properties
+                            KeyModifiers.Shift                  // keyModifiers
+                        );
+                        editState.Update(point.Pointer, point.Position, shiftedArgs);
+                    }
+                    break;
+                case CurveTools.CurveLineTool: {
+                        var shiftedArgs = new PointerEventArgs(
+                            InputElement.PointerMovedEvent, // RoutedEvent
+                            control,                            // source
+                            point.Pointer,                      // pointer
+                            control,                            // visual
+                            point.Position,                     // point
+                            args.Timestamp,                     // timestamp
+                            point.Properties,                   // properties
+                            KeyModifiers.Shift | cmdKey         // keyModifiers
+                        );
+                        editState.Update(point.Pointer, point.Position, shiftedArgs);
+                    }
+                    break;
+                default:
+                    editState.Update(point.Pointer, point.Position, args);
+                    break;
+            }
             editState.End(point.Pointer, point.Position);
             editState = null;
             Cursor = null;
