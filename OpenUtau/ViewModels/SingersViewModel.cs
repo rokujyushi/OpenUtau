@@ -10,6 +10,7 @@ using Avalonia.Media.Imaging;
 using DynamicData.Binding;
 using NAudio.Wave;
 using NWaves.Signals;
+using OpenUtau.Api;
 using OpenUtau.App.Views;
 using OpenUtau.Classic;
 using OpenUtau.Core;
@@ -64,7 +65,7 @@ namespace OpenUtau.App.ViewModels {
             this.WhenAnyValue(vm => vm.Singer)
                 .WhereNotNull()
                 .Subscribe(singer => {
-                    if (MessageBox.LoadingIsActive()) {
+                    if (LoadingWindow.IsLoading()) {
                         try {
                             AttachSinger();
                         } catch (Exception e) {
@@ -125,7 +126,7 @@ namespace OpenUtau.App.ViewModels {
                                 IsChecked = (SingerTypeUtils.SingerTypeNames.TryGetValue(singer.SingerType, out var name) ? name : "") == singerType,
                             }
                         ).ToList();
-                        setDefaultPhonemizerMenuItems = DocManager.Inst.PhonemizerFactories.Select(factory => new MenuItemViewModel() {
+                        setDefaultPhonemizerMenuItems = PhonemizerFactory.GetAll().Select(factory => new MenuItemViewModel() {
                             Header = factory.ToString(),
                             Command = setDefaultPhonemizerCommand,
                             CommandParameter = factory,
@@ -521,7 +522,7 @@ namespace OpenUtau.App.ViewModels {
                         if (samples != null) {
                             int f0Method;
                             switch (method) {
-                                case "dioss":
+                                case "harvest":
                                     f0Method = 1;
                                     break;
                                 case "pyin":
