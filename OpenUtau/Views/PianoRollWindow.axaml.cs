@@ -588,10 +588,10 @@ namespace OpenUtau.App.Views {
                         editState = new DrawLinePitchState(control, ViewModel, this);
                     } else if (ViewModel.NotesViewModel.OverwritePitchTool) {
                         editState = new OverwritePitchState(control, ViewModel, this);
-                    } else {
-                        editState = new OverwriteLinePitchState(control, ViewModel, this);
+                    } else if (ViewModel.NotesViewModel.OverwriteLinePitchTool){
+                        editState = new OverwriteAdaptivePitchState(control, ViewModel, this);
                     }
-                    return;
+                        return;
                 }
             }
             if (ViewModel.NotesViewModel.EraserTool && args.KeyModifiers != cmdKey) {
@@ -813,6 +813,9 @@ namespace OpenUtau.App.Views {
                 valueTipPointerPosition = args.GetCurrentPoint(ValueTipCanvas!).Position;
             }
             if (editState != null) {
+                editState.shiftHeld = args.KeyModifiers == KeyModifiers.Shift;
+                editState.ctrlHeld = args.KeyModifiers == cmdKey;
+                editState.altHeld = args.KeyModifiers == KeyModifiers.Alt;
                 editState.Update(point.Pointer, point.Position);
                 return;
             }
@@ -860,6 +863,14 @@ namespace OpenUtau.App.Views {
             }
             var control = (Control)sender;
             var point = args.GetCurrentPoint(control);
+            if (args.KeyModifiers == cmdKey) {
+                editState.ctrlHeld = true;
+                editState.shiftHeld = false;
+            }
+            if (args.KeyModifiers == KeyModifiers.Shift) {
+                editState.ctrlHeld = false;
+                editState.shiftHeld = true;
+            }
             editState.Update(point.Pointer, point.Position);
             editState.End(point.Pointer, point.Position);
             editState = null;
@@ -1295,6 +1306,8 @@ namespace OpenUtau.App.Views {
 
             bool isNone = args.KeyModifiers == KeyModifiers.None;
             bool isAlt = args.KeyModifiers == KeyModifiers.Alt;
+            bool isAltCtrl = args.KeyModifiers == (cmdKey | KeyModifiers.Alt);
+            bool isAltShift = args.KeyModifiers == (cmdKey | KeyModifiers.Shift);
             bool isCtrl = args.KeyModifiers == cmdKey;
             bool isShift = args.KeyModifiers == KeyModifiers.Shift;
             bool isBoth = args.KeyModifiers == (cmdKey | KeyModifiers.Shift);
@@ -1403,6 +1416,10 @@ namespace OpenUtau.App.Views {
                 case Key.D4:
                     if (isNone) {
                         notesVm.SelectToolCommand?.Execute("4").Subscribe();
+                        return true;
+                    }
+                    if (isAltCtrl) {
+                        notesVm.SelectToolCommand?.Execute("4++++").Subscribe();
                         return true;
                     }
                     if (isAlt) {
