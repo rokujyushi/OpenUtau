@@ -975,7 +975,7 @@ namespace OpenUtau.App.Views {
             }
             if (editState != null) {
                 editState.Begin(point.Pointer, point.Position);
-                editState.Update(point.Pointer, point.Position, args);
+                editState.Update(point.Pointer, point.Position);
             }
         }
 
@@ -987,39 +987,18 @@ namespace OpenUtau.App.Views {
                 valueTipPointerPosition = args.GetCurrentPoint(ValueTipCanvas!).Position;
             }
             if (editState != null) {
-                switch (ViewModel.CurveViewModel.CurveTool) {
-                    case CurveTools.CurveHorizontalLineTool: {
-                            var shiftedArgs = new PointerEventArgs(
-                                InputElement.PointerMovedEvent, // RoutedEvent
-                                control,                            // source
-                                point.Pointer,                      // pointer
-                                control,                            // visual
-                                point.Position,                     // point
-                                args.Timestamp,                     // timestamp
-                                point.Properties,                   // properties
-                                KeyModifiers.Shift                  // keyModifiers
-                            );
-                            editState.Update(point.Pointer, point.Position, shiftedArgs);
-                        }
-                        break;
-                    case CurveTools.CurveLineTool: {
-                            var shiftedArgs = new PointerEventArgs(
-                                InputElement.PointerMovedEvent, // RoutedEvent
-                                control,                            // source
-                                point.Pointer,                      // pointer
-                                control,                            // visual
-                                point.Position,                     // point
-                                args.Timestamp,                     // timestamp
-                                point.Properties,                   // properties
-                                KeyModifiers.Shift | cmdKey         // keyModifiers
-                            );
-                            editState.Update(point.Pointer, point.Position, shiftedArgs);
-                        }
-                        break;
-                    default:
-                        editState.Update(point.Pointer, point.Position, args);
-                        break;
-                }
+                if (args.KeyModifiers == KeyModifiers.Shift) {
+                    editState.shiftHeld = true;
+                } else if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
+                    editState.shiftHeld = true;
+                    editState.ctrlHeld = true;
+                } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+                    editState.shiftHeld = true;
+                } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveLineTool) {
+                    editState.shiftHeld = true;
+                    editState.ctrlHeld = true;
+                } 
+                editState.Update(point.Pointer, point.Position);
             } else {
                 Cursor = null;
             }
@@ -1034,39 +1013,18 @@ namespace OpenUtau.App.Views {
             }
             var control = (Control)sender;
             var point = args.GetCurrentPoint(control);
-            switch (ViewModel.CurveViewModel.CurveTool) {
-                case CurveTools.CurveHorizontalLineTool: {
-                        var shiftedArgs = new PointerEventArgs(
-                            InputElement.PointerMovedEvent, // RoutedEvent
-                            control,                            // source
-                            point.Pointer,                      // pointer
-                            control,                            // visual
-                            point.Position,                     // point
-                            args.Timestamp,                     // timestamp
-                            point.Properties,                   // properties
-                            KeyModifiers.Shift                  // keyModifiers
-                        );
-                        editState.Update(point.Pointer, point.Position, shiftedArgs);
-                    }
-                    break;
-                case CurveTools.CurveLineTool: {
-                        var shiftedArgs = new PointerEventArgs(
-                            InputElement.PointerMovedEvent, // RoutedEvent
-                            control,                            // source
-                            point.Pointer,                      // pointer
-                            control,                            // visual
-                            point.Position,                     // point
-                            args.Timestamp,                     // timestamp
-                            point.Properties,                   // properties
-                            KeyModifiers.Shift | cmdKey         // keyModifiers
-                        );
-                        editState.Update(point.Pointer, point.Position, shiftedArgs);
-                    }
-                    break;
-                default:
-                    editState.Update(point.Pointer, point.Position, args);
-                    break;
+            if (args.KeyModifiers == KeyModifiers.Shift) {
+                editState.shiftHeld = true;
+            } else if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
+                editState.shiftHeld = true;
+                editState.ctrlHeld = true;
+            } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+                editState.shiftHeld = true;
+            } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveLineTool) {
+                editState.shiftHeld = true;
+                editState.ctrlHeld = true;
             }
+            editState.Update(point.Pointer, point.Position);
             editState.End(point.Pointer, point.Position);
             editState = null;
             Cursor = null;

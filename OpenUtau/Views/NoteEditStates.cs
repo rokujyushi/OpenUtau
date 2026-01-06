@@ -49,6 +49,8 @@ namespace OpenUtau.App.Views {
         public IValueTip valueTip;
         protected virtual bool ShowValueTip => true;
         protected virtual string? commandNameKey => null;
+        public bool shiftHeld = false;
+        public bool ctrlHeld = false;
 
         public NoteEditState(Control control, PianoRollViewModel vm, IValueTip valueTip) {
             this.control = control;
@@ -69,9 +71,6 @@ namespace OpenUtau.App.Views {
             if (ShowValueTip) {
                 valueTip.HideValueTip();
             }
-        }
-        public virtual void Update(IPointer pointer, Point point, PointerEventArgs args) {
-            Update(pointer, point);
         }
         public virtual void Update(IPointer pointer, Point point) { }
         public static void Swap<T>(ref T a, ref T b) {
@@ -665,16 +664,14 @@ namespace OpenUtau.App.Views {
         public override void End(IPointer pointer, Point point) {
             base.End(pointer, point);
         }
-        public override void Update(IPointer pointer, Point point, PointerEventArgs args) {
+        public override void Update(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
-            bool shiftHeld = args.KeyModifiers == KeyModifiers.Shift;
-            bool ctrlShiftHeld = args.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
             if (descriptor.type != UExpressionType.Curve) {
-                UpdatePhonemeExp(pointer, point, shiftHeld);
+                UpdatePhonemeExp(pointer, point);
             } else {
-                UpdateCurveExp(pointer, point, ctrlShiftHeld, shiftHeld);
+                UpdateCurveExp(pointer, point);
             }
             bool typeOptions = descriptor.type == UExpressionType.Options;
             double viewMax = descriptor.max + (typeOptions ? 1 : 0);
@@ -703,7 +700,7 @@ namespace OpenUtau.App.Views {
             lastPoint = point;
             shiftWasHeld = shiftHeld;
         }
-        private void UpdatePhonemeExp(IPointer pointer, Point point, bool shiftHeld) {
+        private void UpdatePhonemeExp(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
@@ -740,7 +737,7 @@ namespace OpenUtau.App.Views {
                 }
             }
         }
-        private void UpdateCurveExp(IPointer pointer, Point point, bool ctrlShiftHeld, bool shiftHeld) {
+        private void UpdateCurveExp(IPointer pointer, Point point) {
             var notesVm = vm.NotesViewModel;
             if (descriptor == null || notesVm.Part == null) {
                 return;
@@ -752,7 +749,7 @@ namespace OpenUtau.App.Views {
             if (shiftHeld != shiftWasHeld) {
                 firstPoint = point;
             }
-            if (ctrlShiftHeld) {
+            if (ctrlHeld && shiftHeld) {
                 lastX = notesVm.PointToTick(firstPoint);
                 x = notesVm.PointToTick(lastPoint);
                 lastY = (int)Math.Round(descriptor.min + (descriptor.max - descriptor.min) * (1 - lastPoint.Y / control.Bounds.Height));
@@ -793,7 +790,7 @@ namespace OpenUtau.App.Views {
             base.Begin(pointer, point);
             lastPoint = point;
         }
-        public override void Update(IPointer pointer, Point point, PointerEventArgs args) {
+        public override void Update(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
@@ -866,7 +863,7 @@ namespace OpenUtau.App.Views {
         public override void End(IPointer pointer, Point point) {
             pointer.Capture(null);
         }
-        public override void Update(IPointer pointer, Point point, PointerEventArgs args) {
+        public override void Update(IPointer pointer, Point point) {
             var notesVm = vm.NotesViewModel;
             if (descriptor == null || notesVm.Part == null) {
                 return;
