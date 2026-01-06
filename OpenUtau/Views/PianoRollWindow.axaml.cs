@@ -947,8 +947,8 @@ namespace OpenUtau.App.Views {
                             editState = new CurveSelectionState(control, ViewModel, this, descriptor);
                             break;
                         case CurveTools.CurvePenTool:
-                        case CurveTools.CurveHorizontalLineTool:
                         case CurveTools.CurveLineTool:
+                        case CurveTools.CurveHorizontalLineTool:
                             ViewModel.CurveViewModel.ClearSelect();
                             editState = new ExpSetValueState(control, ViewModel, this, descriptor);
                             break;
@@ -987,17 +987,17 @@ namespace OpenUtau.App.Views {
                 valueTipPointerPosition = args.GetCurrentPoint(ValueTipCanvas!).Position;
             }
             if (editState != null) {
-                if (args.KeyModifiers == KeyModifiers.Shift) {
-                    editState.shiftHeld = true;
-                } else if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
+                if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
                     editState.shiftHeld = true;
                     editState.ctrlHeld = true;
-                } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+                } else if (args.KeyModifiers == KeyModifiers.Shift) {
                     editState.shiftHeld = true;
                 } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveLineTool) {
                     editState.shiftHeld = true;
                     editState.ctrlHeld = true;
-                } 
+                } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+                    editState.shiftHeld = true;
+                }
                 editState.Update(point.Pointer, point.Position);
             } else {
                 Cursor = null;
@@ -1013,16 +1013,16 @@ namespace OpenUtau.App.Views {
             }
             var control = (Control)sender;
             var point = args.GetCurrentPoint(control);
-            if (args.KeyModifiers == KeyModifiers.Shift) {
-                editState.shiftHeld = true;
-            } else if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
+            if (args.KeyModifiers == (cmdKey | KeyModifiers.Shift)) {
                 editState.shiftHeld = true;
                 editState.ctrlHeld = true;
-            } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+            } else if (args.KeyModifiers == KeyModifiers.Shift) {
                 editState.shiftHeld = true;
             } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveLineTool) {
                 editState.shiftHeld = true;
                 editState.ctrlHeld = true;
+            } else if (ViewModel.CurveViewModel.CurveTool == CurveTools.CurveHorizontalLineTool) {
+                editState.shiftHeld = true;
             }
             editState.Update(point.Pointer, point.Position);
             editState.End(point.Pointer, point.Position);
