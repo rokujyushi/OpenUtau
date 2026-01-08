@@ -29,6 +29,7 @@ namespace OpenUtau.Core.Enunu {
     internal static class EnunuUtils {
         static readonly Encoding ShiftJIS = Encoding.GetEncoding("shift_jis");
         static readonly Encoding UTF8 = Encoding.UTF8;
+        public const string SMOC = "smoc";
 
         internal static void WriteUst(IList<EnunuNote> notes, double tempo, USinger singer, string ustPath) {
             WriteUst(notes, tempo, singer, ustPath, ShiftJIS);

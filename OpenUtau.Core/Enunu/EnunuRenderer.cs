@@ -12,12 +12,14 @@ using OpenUtau.Core.Render;
 using OpenUtau.Core.SignalChain;
 using OpenUtau.Core.Ustx;
 using Serilog;
+using ThirdParty;
 
 namespace OpenUtau.Core.Enunu {
     public class EnunuRenderer : IRenderer {
         public const int headTicks = 240;
         public const int tailTicks = 240;
         protected string port;
+        const string SMOC = EnunuUtils.SMOC;
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
             Format.Ustx.DYN,
@@ -225,6 +227,18 @@ namespace OpenUtau.Core.Enunu {
             }
             var config = EnunuConfig.Load(phrase.singer);
             var f0 = np.Load<double[]>(f0Path);
+            int totalFrames = f0.Length;
+            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position - headTicks);
+            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end + tailTicks) - phrase.endMs;
+            int headFrames = (int)Math.Round(headMs / config.framePeriod);
+            int tailFrames = (int)Math.Round(tailMs / config.framePeriod);
+            var exprCurve = phrase.curves.FirstOrDefault(curve => curve.Item1.Equals(SMOC));
+            if (exprCurve != null) {
+                List<int> exprs = SampleCurve(phrase, exprCurve.Item2, 0.5, config.framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x).Select(x => (int)x).ToList();
+                var f0S = new F0Smoother(f0.ToList());
+                f0S.SmoothenWidthList = exprs;
+                f0 = f0S.GetSmoothenedF0List(f0.ToList()).ToArray();
+            }
             var result = new RenderPitchResult() {
                 tones = f0.Select(f => (float)MusicMath.FreqToTone(f)).ToArray(),
             };
@@ -308,7 +322,18 @@ namespace OpenUtau.Core.Enunu {
                 return null;
             }
             var config = EnunuConfig.Load(ensinger);
-            var result = new List<UExpressionDescriptor>();
+            var result = new List<UExpressionDescriptor>() {
+                //expressiveness
+                new UExpressionDescriptor {
+                    name = "pitch smoothened (curve)",
+                    abbr = SMOC,
+                    type = UExpressionType.Curve,
+                    min = 0,
+                    max = 10,
+                    defaultValue = 0,
+                    isFlag = false
+                },
+            };
             foreach (var exp in config.extensions.styles) {
                 result.Add(new UExpressionDescriptor(exp.Value.name, exp.Key, exp.Value.min, exp.Value.max, exp.Value.default_value, exp.Value.flag + "/" + exp.Key));
             }
