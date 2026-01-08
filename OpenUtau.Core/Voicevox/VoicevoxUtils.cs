@@ -269,9 +269,6 @@ namespace OpenUtau.Core.Voicevox {
                             } else {
                                 slur_index = 0;
                             }
-                        } else {
-                            // 通常合成ではスラー分の長さを前のノートに足す
-                            durationMs += vNotes[index - 1].durationMs;
                         }
                     }
                     int length = (int)Math.Round((durationMs / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
@@ -287,6 +284,13 @@ namespace OpenUtau.Core.Voicevox {
                             short_length_count = 0;
                         } else {
                             short_length_count += 1;
+                        }
+                    }
+                    if (IsSyllableVowelExtensionNote(vNotes[index].lyric)) {
+                        if (!pitch_slur) {
+                            //通常合成ではスラー分の長さを前のノートに足す
+                            vqMain.notes[index].frame_length += length;
+                            break;
                         }
                     }
 
@@ -350,6 +354,38 @@ namespace OpenUtau.Core.Voicevox {
             return volumes;
         }
 
+        public static void AdjustF0ForSlur(VoicevoxQueryMain vqMain, List<double> f0) {
+            if (vqMain == null || vqMain.notes == null || f0 == null) {
+                return;
+            }
+
+            int offset = 0;
+            int? baseKey = null;
+            foreach (var note in vqMain.notes) {
+                int start = offset;
+                int end = Math.Min(f0.Count, offset + note.frame_length);
+
+                if (note.key.HasValue) {
+                    if (note.slur_index == 0) {
+                        baseKey = note.key;
+                    } else if (note.slur_index > 0 && baseKey.HasValue) {
+                        int delta = note.key.Value - baseKey.Value;
+                        if (delta != 0) {
+                            double factor = Math.Pow(2d, delta / 12d);
+                            for (int i = start; i < end; i++) {
+                                f0[i] *= factor;
+                            }
+                        }
+                    }
+                }
+
+                offset += note.frame_length;
+                if (offset >= f0.Count) {
+                    break;
+                }
+            }
+        }
+
         public static double[] SampleCurve(RenderPhrase phrase, float[] curve, double defaultValue, double frameMs, int length, int headFrames, int tailFrames, double offset, Func<double, double> convert) {
             const int interval = 5;
             var result = new double[length];
@@ -396,12 +432,16 @@ namespace OpenUtau.Core.Voicevox {
         }
 
         public static string getBaseSingerID(VoicevoxSinger singer) {
-            if (singer.voicevoxConfig.base_singer_style != null) {
-                foreach (var s in singer.voicevoxConfig.base_singer_style) {
-                    if (s.name.Equals(singer.voicevoxConfig.base_singer_name)) {
-                        if (s.styles.name.Equals(singer.voicevoxConfig.base_singer_style_name)) {
-                            return s.styles.id.ToString();
-                        }
+            if (singer.voicevoxConfig == null) {
+                return defaultID;
+            }
+            if (singer.voicevoxConfig.base_singer_style == null) {
+                return defaultID;
+            }
+            foreach (var s in singer.voicevoxConfig.base_singer_style) {
+                if (s.name.Equals(singer.voicevoxConfig.base_singer_name)) {
+                    if (s.styles.name.Equals(singer.voicevoxConfig.base_singer_style_name)) {
+                        return s.styles.id.ToString();
                     }
                 }
             }
