@@ -1329,8 +1329,8 @@ namespace OpenUtau.App.Views {
                 double prevTone = notesVm.PointToToneDouble(prevPoint);
                 if (altHeld) {
                     double delta = currentTone - prevTone;
-                    double scale = ctrlHeld ? 0.5 : 0.25;
-                    scurveStrength = Math.Clamp(scurveStrength + delta * scale, 0.1, 8.0);
+                    delta = delta < 0 ? delta * -1 : delta;
+                    scurveStrength = Math.Clamp(scurveStrength + delta * 0.5, 0.1, 8.0);
                     valueTip.UpdateValueTip($"S:{scurveStrength:0.00}");
                 }
                 lastPoint = point;
