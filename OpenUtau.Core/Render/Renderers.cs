@@ -9,7 +9,8 @@ using OpenUtau.Core.Util;
 namespace OpenUtau.Core.Render {
     public static class Renderers {
         public const string CLASSIC = "CLASSIC";
-        public const string WORLDLINER = "WORLDLINE-R";
+        public const string WORLDLINE_R = "WORLDLINE-R";
+        public const string WORLDLINE_R2 = "WORLDLINE-R2";
         public const string ENUNU = "ENUNU";
         public const string ENUNULAB = "ENUNU-LAB";
         public const string VOGEN = "VOGEN";
@@ -17,7 +18,7 @@ namespace OpenUtau.Core.Render {
         public const string VOICEVOX = "VOICEVOX";
         public const string NEUTRINO = "NEUTRINO";
 
-        static readonly string[] classicRenderers = new[] { WORLDLINER, CLASSIC };
+        static readonly string[] classicRenderers = new[] { WORLDLINE_R, CLASSIC };
         static readonly string[] enunuRenderers = new[] { ENUNU, ENUNULAB };
         static readonly string[] vogenRenderers = new[] { VOGEN };
         static readonly string[] diffSingerRenderers = new[] { DIFFSINGER };
@@ -62,8 +63,10 @@ namespace OpenUtau.Core.Render {
         public static IRenderer CreateRenderer(string renderer) {
             if (renderer == CLASSIC) {
                 return new ClassicRenderer();
-            } else if (renderer?.StartsWith(WORLDLINER.Substring(0, 9)) ?? false) {
-                return new WorldlineRenderer();
+            } else if (renderer == WORLDLINE_R2) {
+                return new WorldlineRenderer(version: 2);
+            } else if (renderer?.StartsWith(WORLDLINE_R.Substring(0, 9)) ?? false) {
+                return new WorldlineRenderer(version: 1);
             } else if (renderer == ENUNU) {
                 return new Enunu.EnunuRenderer();
             } else if (renderer == VOGEN) {
