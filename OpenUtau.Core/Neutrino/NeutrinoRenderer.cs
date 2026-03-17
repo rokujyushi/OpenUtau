@@ -217,7 +217,7 @@ namespace OpenUtau.Core.Neutrino {
                 htsNote.langDependent = "0"; // no macron
                 if (macronLyrics.Contains(note.lyric)) {
                     htsNote.langDependent = "1"; // macron
-                }
+        }
             }
             return htsNote;
         }
@@ -276,26 +276,26 @@ namespace OpenUtau.Core.Neutrino {
 
         HTSPhoneme[] HTSNoteToPhonemes(HTSNote htsNote) {
             var htsPhonemes = htsNote.symbols.Select(x => new HTSPhoneme(x, htsNote)).ToArray();
-            int prevVowelPos = -1;
             foreach (int i in Enumerable.Range(0, htsPhonemes.Length)) {
+                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
-                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
-                if (htsPhonemes[i].type == "v") {
-                    prevVowelPos = i;
-                } else {
-                    if (prevVowelPos > 0) {
-                        htsPhonemes[i].distance_from_previous_vowel = i - prevVowelPos;
+                if (htsPhonemes[i].type.Equals("c")) {
+                    int prev = i - 1;
+                    if (prev >= 0) {
+                        if (htsPhonemes[prev].type.Equals("v")) {
+                            htsPhonemes[i].prev_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
+                        }
                     }
-                }
-            }
-            int nextVowelPos = -1;
-            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
-                if (htsPhonemes[i].type == "v") {
-                    nextVowelPos = i;
-                } else {
-                    if (nextVowelPos > 0) {
-                        htsPhonemes[i].distance_to_next_vowel = nextVowelPos - i;
+                    int next = i + 1;
+                    if (next < htsPhonemes.Length) {
+                        if (htsPhonemes[next].type.Equals("v")) {
+                            htsPhonemes[i].next_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        }
                     }
                 }
             }
@@ -306,7 +306,7 @@ namespace OpenUtau.Core.Neutrino {
             var fixs = GetPrefixAndSuffix(notes);
             foreach (var htsPhoneme in htsPhonemes) {
                 htsPhoneme.flag1 = "00"; // NEUTRINO Default.
-            }
+        }
             return htsPhonemes;
         }
 
@@ -377,13 +377,7 @@ namespace OpenUtau.Core.Neutrino {
                 var tmpPhonemes = HTSNoteToPhonemes(htsNote);
                 var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase.notes[noteIndex]) ?? tmpPhonemes;
                 //分析第几个音素与音符对齐
-                int firstVowelIndex = 0;//The index of the first vowel in the note
-                for (int phIndex = 0; phIndex < htsNote.symbols.Length; phIndex++) {
-                    if (g2p.IsVowel(htsNote.symbols[phIndex])) {
-                        firstVowelIndex = phIndex;
-                        break;
-                    }
-                }
+                int firstVowelIndex = HTSContextBuilder.FindFirstVowelIndex(htsNote.symbols, g2p.IsVowel);
                 phAlignPoints.Add(new Tuple<int, double>(
                     htsPhonemes.Count + firstVowelIndex,//TODO
                     timeAxis.TickPosToMsPos(htsNote.positionTicks)
@@ -422,7 +416,7 @@ namespace OpenUtau.Core.Neutrino {
                 timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks) + barLenMsStart // = sentenceDurMs
             ));
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
-            htsPhrase.resolution = resolution;
+            htsPhrase.UpdateResolution(resolution);
             htsPhrase.totalNotes = htsNotes.Count - 1;
             htsPhrase.totalPhonemes = htsPhonemes.Count - 1;
             htsPhrase.totalPhrases = 1;
@@ -467,17 +461,20 @@ namespace OpenUtau.Core.Neutrino {
         }
 
         public double[] LoadFile(string filePath) {
-            using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read)) {
-                using (BinaryReader reader = new BinaryReader(fs)) {
-                    long fileSize = fs.Length;
-                    int Count = (int)(fileSize / sizeof(float));
-                    double[] pitchData = new double[Count];
-                    for (int i = 0; i < Count; i++) {
-                        pitchData[i] = reader.ReadSingle();
+            if (File.Exists(filePath)) {
+                using (FileStream fs = new FileStream(filePath, FileMode.Open, FileAccess.Read)) {
+                    using (BinaryReader reader = new BinaryReader(fs)) {
+                        long fileSize = fs.Length;
+                        int Count = (int)(fileSize / sizeof(float));
+                        double[] pitchData = new double[Count];
+                        for (int i = 0; i < Count; i++) {
+                            pitchData[i] = reader.ReadSingle();
+                        }
+                        return pitchData;
                     }
-                    return pitchData;
                 }
             }
+            return new double[0];
         }
         private static double[,] Array2DArray(double[] elements, int columns)
         {

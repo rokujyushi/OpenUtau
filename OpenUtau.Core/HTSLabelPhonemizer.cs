@@ -9,6 +9,7 @@ using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using OpenUtau.Core.Util.nnmnkwii.io.hts;
 using Serilog;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace OpenUtau.Core {
     public abstract class HTSLabelPhonemizer : Phonemizer {
@@ -409,11 +410,29 @@ namespace OpenUtau.Core {
 
         HTSPhoneme[] HTSNoteToPhonemes(HTSNote htsNote) {
             var htsPhonemes = htsNote.symbols.Select(x => new HTSPhoneme(x, htsNote)).ToArray();
-            int prevVowelPos = -1;
+            // 音節内の音素に対して、タイプ（母音/子音/休符など）や位置情報を付与
             foreach (int i in Enumerable.Range(0, htsPhonemes.Length)) {
+                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
-                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
+                if (htsPhonemes[i].type.Equals("c")) {
+                    int prev = i - 1;
+                    if (prev >= 0) {
+                        if (htsPhonemes[prev].type.Equals("v")) {
+                            htsPhonemes[i].prev_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
+                        }
+                    }
+                    int next = i + 1;
+                    if (next < htsPhonemes.Length) {
+                        if (htsPhonemes[next].type.Equals("v")) {
+                            htsPhonemes[i].next_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        }
+                    }
+                }
             }
             return htsPhonemes;
         }

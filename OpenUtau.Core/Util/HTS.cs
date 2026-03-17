@@ -263,22 +263,6 @@ namespace OpenUtau.Core.Util {
             result[10] = (afterNext == null) ? "xx" : afterNext.flag1;
             result[11] = position.ToString();
             result[12] = position_backward.ToString();
-            if (type.Equals("c")) {
-                if (prev != null) {
-                    if (prev.type.Equals("v")) {
-                        prev_vowel_distance = 1;
-                    } else {
-                        prev_vowel_distance = prev.prev_vowel_distance + 1;
-                    }
-                }
-                if (next != null) {
-                    if (next.type.Equals("v")) {
-                        next_vowel_distance = 1;
-                    } else {
-                        next_vowel_distance = next.next_vowel_distance + 1;
-                    }
-                }
-            }
             result[13] = prev_vowel_distance == 0 ? "xx" : prev_vowel_distance.ToString();
             result[14] = next_vowel_distance == 0 ? "xx" : next_vowel_distance.ToString();
             result[15] = flag2;

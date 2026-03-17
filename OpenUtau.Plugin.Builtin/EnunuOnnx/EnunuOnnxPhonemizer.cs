@@ -452,26 +452,26 @@ namespace OpenUtau.Plugin.Builtin {
 
         HTSPhoneme[] HTSNoteToPhonemes(HTSNote htsNote) {
             var htsPhonemes = htsNote.symbols.Select(x => new HTSPhoneme(x, htsNote)).ToArray();
-            int prevVowelPos = -1;
             foreach (int i in Enumerable.Range(0, htsPhonemes.Length)) {
+                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
-                htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
-                if (htsPhonemes[i].type == "v") {
-                    prevVowelPos = i;
-                } else {
-                    if (prevVowelPos > 0) {
-                        htsPhonemes[i].prev_vowel_distance = i - prevVowelPos;
+                if (htsPhonemes[i].type.Equals("c")) {
+                    int prev = i - 1;
+                    if (prev >= 0) {
+                        if (htsPhonemes[prev].type.Equals("v")) {
+                            htsPhonemes[i].prev_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
+                        }
                     }
-                }
-            }
-            int nextVowelPos = -1;
-            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
-                if (htsPhonemes[i].type == "v") {
-                    nextVowelPos = i;
-                } else {
-                    if (nextVowelPos > 0) {
-                        htsPhonemes[i].next_vowel_distance = nextVowelPos - i;
+                    int next = i + 1;
+                    if (next < htsPhonemes.Length) {
+                        if (htsPhonemes[next].type.Equals("v")) {
+                            htsPhonemes[i].next_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        }
                     }
                 }
             }

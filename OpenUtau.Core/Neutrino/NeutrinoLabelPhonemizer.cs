@@ -125,9 +125,7 @@ namespace OpenUtau.Core.Neutrino {
         protected override HTSPhoneme[] CustomHTSPhonemeContext(HTSPhoneme[] htsPhonemes, Note[] notes) {
             var fixs = GetPrefixAndSuffix(notes[0]);
             foreach (var htsPhoneme in htsPhonemes) {
-                if(htsPhoneme.type.Equals("v") || htsPhoneme.type.Equals("c")) {
-                    htsPhoneme.flag1 = "00"; // NEUTRINO Default.
-                }
+                htsPhoneme.flag1 = "00"; // NEUTRINO Default.
             }
             return htsPhonemes;
         }
