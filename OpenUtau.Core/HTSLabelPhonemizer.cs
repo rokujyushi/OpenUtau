@@ -194,27 +194,18 @@ namespace OpenUtau.Core {
 
         //make a HTS Note from given symbols and UNotes
         protected HTSNote makeHtsNote(string[] symbols, IList<Note> group, int startTick) {
-            UTimeSignature sig = timeAxis.TimeSignatureAtTick(group[0].position);
-            timeAxis.TickPosToBarBeat(group[0].position, out int bar, out int beat, out int remainingTicks);
-            var isRest = symbols.Select(x => x.ToLowerInvariant()).Any(x => pauses.Contains(x) || silences.Contains(x) || breaks.Contains(x));
-            var htsNote = new HTSNote(
-                            symbols: symbols,
-                            tone: group[0].tone,
-                            isSlur: IsSyllableVowelExtensionNote(group[0]),
-                            isRest: isRest,
-                            lang: isRest ? string.Empty : lang,
-                            accent: string.Empty,
-                            beatPerBar: sig.beatPerBar,
-                            beatUnit: sig.beatUnit,
-                            positionBar: bar,
-                            positionBeat: beat,
-                            key: key,
-                            bpm: timeAxis.GetBpmAtTick(group[0].position),
-                            startms: (int)timeAxis.MsBetweenTickPos(startTick, group[0].position),
-                            endms: (int)timeAxis.MsBetweenTickPos(startTick, group[^1].position + group[^1].duration),
-                            positionTicks: group[0].position,
-                            durationTicks: group[^1].position + group[^1].duration - group[0].position
-                            );
+            var htsNote = HTSContextBuilder.BuildNote(
+                symbols,
+                group[0].tone,
+                IsSyllableVowelExtensionNote(group[0]),
+                lang,
+                key,
+                timeAxis,
+                group[0].position,
+                group[^1].position + group[^1].duration,
+                startTick,
+                0,
+                symbol => pauses.Contains(symbol) || silences.Contains(symbol) || breaks.Contains(symbol));
             return CustomHTSNoteContext(htsNote, group[0]) ?? htsNote;
         }
 
@@ -423,23 +414,6 @@ namespace OpenUtau.Core {
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
                 htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
-                if (htsPhonemes[i].type == "v") {
-                    prevVowelPos = i;
-                } else {
-                    if (prevVowelPos > 0) {
-                        htsPhonemes[i].distance_from_previous_vowel = i - prevVowelPos;
-                    }
-                }
-            }
-            int nextVowelPos = -1;
-            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
-                if (htsPhonemes[i].type == "v") {
-                    nextVowelPos = i;
-                } else {
-                    if (nextVowelPos > 0) {
-                        htsPhonemes[i].distance_to_next_vowel = nextVowelPos - i;
-                    }
-                }
             }
             return htsPhonemes;
         }
@@ -498,8 +472,7 @@ namespace OpenUtau.Core {
             int sentenceDurMs = barLenMsStart + (int)timeAxis.MsBetweenTickPos(startTick, endTick) + barLenMsEnd;
             int sentenceDurTicks = barLenTicksStart + (endTick - startTick) + barLenTicksEnd;
 
-            int noteIndexAnchorOffset = 1; // 先頭パディング分
-            var notePhIndex = new List<int> { noteIndexAnchorOffset };
+            var notePhIndex = new List<int> { 1 }; // 先頭パディング分
             var phAlignPoints = new List<Tuple<int, double>>();
 
             // 先頭パディング pau
@@ -525,7 +498,7 @@ namespace OpenUtau.Core {
             );
             var htsNotes = new List<HTSNote> { PaddingNoteStart };
             var htsPhonemes = new List<HTSPhoneme>();
-            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteStart));
+            htsPhonemes.AddRange(CustomHTSPhonemeContext(HTSNoteToPhonemes(PaddingNoteStart), phrase[0]));
 
             // 楽譜ノート → HTSノート
             for (int n = 0; n < phrase.Length; ++n) {
@@ -580,7 +553,7 @@ namespace OpenUtau.Core {
                 durationTicks: barLenTicksEnd
             );
             htsNotes.Add(PaddingNoteEnd);
-            htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteEnd));
+            htsPhonemes.AddRange(CustomHTSPhonemeContext(HTSNoteToPhonemes(PaddingNoteEnd), phrase[^1]));
 
             // 末尾アンカーは「曲末＋終端パディング」位置
             var lastNote = htsNotes[^1];
@@ -589,9 +562,9 @@ namespace OpenUtau.Core {
                 timeAxis.TickPosToMsPos(lastNote.positionTicks + lastNote.durationTicks) + barLenMsStart // = sentenceDurMs
             ));
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
-            htsPhrase.resolution = resolution;
-            htsPhrase.totalNotes = htsNotes.Count - 1;
-            htsPhrase.totalPhonemes = htsPhonemes.Count - 1;
+            htsPhrase.UpdateResolution(resolution);
+            htsPhrase.totalNotes = htsNotes.Count;
+            htsPhrase.totalPhonemes = htsPhonemes.Count;
             htsPhrase.totalPhrases = 1;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
@@ -632,58 +605,24 @@ namespace OpenUtau.Core {
             List<double> labPositions =
                 hTSLabels.Select(label => (double)(label.end_time - label.start_time) / 10000.0).ToList();
 
-            // アライメント（略）
-            List<double> positions = new List<double>();
-            List<double> alignGroup = labPositions.GetRange(0, phAlignPoints[0].Item1 - 1);
-            positions.AddRange(stretch(alignGroup, 1, phAlignPoints[0].Item2));
-            foreach (var pair in phAlignPoints.Zip(phAlignPoints.Skip(1), (a, b) => Tuple.Create(a, b))) {
-                var currAlignPoint = pair.Item1;
-                var nextAlignPoint = pair.Item2;
-                alignGroup = labPositions.GetRange(currAlignPoint.Item1, nextAlignPoint.Item1 - currAlignPoint.Item1);
-                double ratio = (nextAlignPoint.Item2 - currAlignPoint.Item2) / alignGroup.Sum();
-                positions.AddRange(stretch(alignGroup, ratio, nextAlignPoint.Item2));
-            }
+            var positions = HTSContextBuilder.AlignTimingPositions(labPositions, phAlignPoints);
 
             // 出力（略）
-            int index = 1;
+            string[] phonemesRedirected = htsPhonemes.Select(x => x.symbol).ToArray();
             for (int groupIndex = 0; groupIndex < phrase.Length; groupIndex++) {
-                string[] phonemesRedirected = htsPhonemes.Select(x => x.symbol).ToArray();
                 Note[] group = phrase[groupIndex];
-                var noteResult = new List<Tuple<string, int>>();
                 if (group[0].lyric.StartsWith("+")) {
                     continue;
                 }
-                double notePos = timeAxis.TickPosToMsPos(group[0].position); // ms
-                for (int phIndex = notePhIndex[groupIndex]; phIndex < notePhIndex[groupIndex + 1]; ++phIndex) {
-                    if (!string.IsNullOrEmpty(phonemesRedirected[phIndex])) {
-                        noteResult.Add(Tuple.Create(
-                            phonemesRedirected[phIndex],
-                            timeAxis.TicksBetweenMsPos(notePos, positions[phIndex - 1])
-                        ));
-                    }
-                }
+                double notePos = timeAxis.TickPosToMsPos(group[0].position) + barLenMsStart; // ms
+                var noteResult = HTSContextBuilder.BuildAlignedNoteTimingResult(
+                    phonemesRedirected,
+                    notePhIndex[groupIndex],
+                    notePhIndex[groupIndex + 1],
+                    positions,
+                    notePos,
+                    timeAxis.TicksBetweenMsPos);
                 partResult[group[0].position] = noteResult;
-            }
-        }
-
-        //缩放音素时长序列
-        public List<double> stretch(IList<double> source, double ratio, double endPos) {
-            //source：音素时长序列，单位ms
-            //ratio：缩放比例
-            //endPos：目标终点时刻，单位ms
-            //输出：缩放后的音素位置，单位ms
-            double startPos = endPos - source.Sum() * ratio;
-            var result = CumulativeSum(source.Select(x => x * ratio).Prepend(0), startPos).ToList();
-            result.RemoveAt(result.Count - 1);
-            return result;
-        }
-
-        //计算累加
-        public static IEnumerable<double> CumulativeSum(IEnumerable<double> sequence, double start = 0) {
-            double sum = start;
-            foreach (var item in sequence) {
-                sum += item;
-                yield return sum;
             }
         }
 

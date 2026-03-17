@@ -461,7 +461,7 @@ namespace OpenUtau.Plugin.Builtin {
                     prevVowelPos = i;
                 } else {
                     if (prevVowelPos > 0) {
-                        htsPhonemes[i].distance_from_previous_vowel = i - prevVowelPos;
+                        htsPhonemes[i].prev_vowel_distance = i - prevVowelPos;
                     }
                 }
             }
@@ -471,7 +471,7 @@ namespace OpenUtau.Plugin.Builtin {
                     nextVowelPos = i;
                 } else {
                     if (nextVowelPos > 0) {
-                        htsPhonemes[i].distance_to_next_vowel = nextVowelPos - i;
+                        htsPhonemes[i].next_vowel_distance = nextVowelPos - i;
                     }
                 }
             }

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using OpenUtau.Core.Ustx;
 
 //This file implement utaupy.hts python library's function
 //https://github.com/oatsu-gh/utaupy/hts.py
@@ -64,6 +65,125 @@ namespace OpenUtau.Core.Util {
         }
     }
 
+    public static class HTSContextBuilder {
+        public static bool HasPauseLikePhoneme(IEnumerable<string> symbols, Func<string, bool> isPauseLike) {
+            return symbols.Any(symbol => isPauseLike(symbol.ToLowerInvariant()));
+        }
+
+        public static HTSNote BuildNote(
+                string[] symbols,
+                int tone,
+                bool isSlur,
+                string lang,
+                int key,
+                TimeAxis timeAxis,
+                int noteStartTick,
+                int noteEndTick,
+                int phraseStartTick,
+                int startMsOffset,
+                Func<string, bool> isPauseLike) {
+            UTimeSignature sig = timeAxis.TimeSignatureAtTick(noteStartTick);
+            timeAxis.TickPosToBarBeat(noteStartTick, out int bar, out int beat, out int _);
+            var isRest = HasPauseLikePhoneme(symbols, isPauseLike);
+            return new HTSNote(
+                symbols: symbols,
+                tone: tone,
+                isSlur: isSlur,
+                isRest: isRest,
+                lang: isRest ? string.Empty : lang,
+                accent: string.Empty,
+                beatPerBar: sig.beatPerBar,
+                beatUnit: sig.beatUnit,
+                positionBar: bar,
+                positionBeat: beat,
+                key: key,
+                bpm: timeAxis.GetBpmAtTick(noteStartTick),
+                startms: (int)timeAxis.MsBetweenTickPos(phraseStartTick, noteStartTick) + startMsOffset,
+                endms: (int)timeAxis.MsBetweenTickPos(phraseStartTick, noteEndTick) + startMsOffset,
+                positionTicks: noteStartTick,
+                durationTicks: noteEndTick - noteStartTick);
+        }
+
+        public static int FindFirstVowelIndex(IReadOnlyList<string> symbols, Func<string, bool> isVowel) {
+            for (int i = 0; i < symbols.Count; i++) {
+                if (isVowel(symbols[i])) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        public static List<double> AlignTimingPositions(
+                IReadOnlyList<double> durationsMs,
+                IReadOnlyList<Tuple<int, double>> phAlignPoints) {
+            var positions = new List<double>();
+            if (durationsMs.Count == 0 || phAlignPoints.Count == 0) {
+                return positions;
+            }
+            var firstCount = Math.Max(0, phAlignPoints[0].Item1 - 1);
+            var initialGroup = durationsMs.Take(firstCount).ToList();
+            positions.AddRange(Stretch(initialGroup, 1, phAlignPoints[0].Item2));
+            foreach (var pair in phAlignPoints.Zip(phAlignPoints.Skip(1), Tuple.Create)) {
+                var currAlignPoint = pair.Item1;
+                var nextAlignPoint = pair.Item2;
+                var count = nextAlignPoint.Item1 - currAlignPoint.Item1;
+                if (count <= 0) {
+                    continue;
+                }
+                var alignGroup = durationsMs.Skip(currAlignPoint.Item1).Take(count).ToList();
+                if (alignGroup.Count == 0) {
+                    continue;
+                }
+                var sum = alignGroup.Sum();
+                var ratio = sum == 0 ? 0 : (nextAlignPoint.Item2 - currAlignPoint.Item2) / sum;
+                positions.AddRange(Stretch(alignGroup, ratio, nextAlignPoint.Item2));
+            }
+            return positions;
+        }
+
+        public static List<Tuple<string, int>> BuildAlignedNoteTimingResult(
+                IReadOnlyList<string> phonemes,
+                int startIndex,
+                int endIndex,
+                IReadOnlyList<double> positionsMs,
+                double notePosMs,
+                Func<double, double, int> ticksBetweenMsPos) {
+            var noteResult = new List<Tuple<string, int>>();
+            for (int phIndex = startIndex; phIndex < endIndex; ++phIndex) {
+                if (phIndex < 0 || phIndex >= phonemes.Count) {
+                    continue;
+                }
+                var phoneme = phonemes[phIndex];
+                if (string.IsNullOrEmpty(phoneme)) {
+                    continue;
+                }
+                var positionIndex = phIndex - 1;
+                if (positionIndex < 0 || positionIndex >= positionsMs.Count) {
+                    continue;
+                }
+                noteResult.Add(Tuple.Create(
+                    phoneme,
+                    ticksBetweenMsPos(notePosMs, positionsMs[positionIndex])));
+            }
+            return noteResult;
+        }
+
+        public static List<double> Stretch(IList<double> source, double ratio, double endPos) {
+            double startPos = endPos - source.Sum() * ratio;
+            var result = CumulativeSum(source.Select(x => x * ratio).Prepend(0), startPos).ToList();
+            result.RemoveAt(result.Count - 1);
+            return result;
+        }
+
+        public static IEnumerable<double> CumulativeSum(IEnumerable<double> sequence, double start = 0) {
+            double sum = start;
+            foreach (var item in sequence) {
+                sum += item;
+                yield return sum;
+            }
+        }
+    }
+
     public class HTSPhoneme {
         public string symbol;
         public string flag1 = "xx";
@@ -83,8 +203,8 @@ namespace OpenUtau.Core.Util {
         public int position_backward = 1;
         //Here -1 means null
         //distances to vowels in this note, -1 for vowels themselves
-        public int distance_from_previous_vowel = -1;
-        public int distance_to_next_vowel = -1;
+        public int prev_vowel_distance = 0;
+        public int next_vowel_distance = 0;
 
         public HTSPhoneme(string phoneme, HTSNote note) {
             this.symbol = phoneme;
@@ -143,8 +263,24 @@ namespace OpenUtau.Core.Util {
             result[10] = (afterNext == null) ? "xx" : afterNext.flag1;
             result[11] = position.ToString();
             result[12] = position_backward.ToString();
-            result[13] = distance_from_previous_vowel < 0 ? "xx" : distance_from_previous_vowel.ToString();
-            result[14] = distance_to_next_vowel < 0 ? "xx" : distance_to_next_vowel.ToString();
+            if (type.Equals("c")) {
+                if (prev != null) {
+                    if (prev.type.Equals("v")) {
+                        prev_vowel_distance = 1;
+                    } else {
+                        prev_vowel_distance = prev.prev_vowel_distance + 1;
+                    }
+                }
+                if (next != null) {
+                    if (next.type.Equals("v")) {
+                        next_vowel_distance = 1;
+                    } else {
+                        next_vowel_distance = next.next_vowel_distance + 1;
+                    }
+                }
+            }
+            result[13] = prev_vowel_distance == 0 ? "xx" : prev_vowel_distance.ToString();
+            result[14] = next_vowel_distance == 0 ? "xx" : next_vowel_distance.ToString();
             result[15] = flag2;
 
             return result;
@@ -175,30 +311,15 @@ namespace OpenUtau.Core.Util {
         }
 
         public string[] g() {
-            var result = parent.g();
-            if (type.Equals("p")) {
-                result[0] = "xx";
-                result[1] = "xx";
-        }
-            return result;
+            return parent.g();
         }
 
         public string[] h() {
-            var result = parent.h();
-            if (type.Equals("p")) {
-                result[0] = "xx";
-                result[1] = "xx";
-        }
-            return result;
+            return parent.h();
         }
 
         public string[] i() {
-            var result = parent.i();
-            if (type.Equals("p")) {
-                result[0] = "xx";
-                result[1] = "xx";
-        }
-            return result;
+            return parent.i();
         }
 
         public string[] j() {
@@ -206,7 +327,9 @@ namespace OpenUtau.Core.Util {
         }
     }
 
-    //TODO
+    // TODO: Keep HTS note-context generation centralized here.
+    // Remaining E-context slots that stay "xx" today should only be filled after
+    // their HTS/NEUTRINO semantics are confirmed against the target implementation.
     public class HTSNote {
         public int startMs = 0;
         public int endMs = 0;
@@ -222,8 +345,8 @@ namespace OpenUtau.Core.Util {
         public int beatPerBar = 0;
         public int beatUnit = 0;
 
-        public int positionBar = 0; //bar number in the sentence, starting from 0
-        public int positionBeat = 0; //unit number in the bar, starting from 0
+        public int positionBar = 1; //bar number in the sentence, starting from 1
+        public int positionBeat = 1; //unit number in the bar, starting from 1
 
         public double key = 0;
         public double bpm = 0;
@@ -287,6 +410,16 @@ namespace OpenUtau.Core.Util {
         public int? accentMsBackward;
         public int? accentTickBackward;
 
+        public string[] a() {
+            if (prev == null) {
+                return Enumerable.Repeat("xx", 5).ToArray();
+            } else if (prev.isRest) {
+                return Enumerable.Repeat("xx", 5).ToArray();
+            } else {
+                return prev.b();
+            }
+        }
+
         public string[] b() {
             return new string[] {
                 symbols.Length.ToString(),
@@ -297,16 +430,10 @@ namespace OpenUtau.Core.Util {
             };
         }
 
-        public string[] a() {
-            if (prev == null) {
-                return Enumerable.Repeat("xx", 5).ToArray();
-            } else {
-                return prev.b();
-            }
-        }
-
         public string[] c() {
             if (next == null) {
+                return Enumerable.Repeat("xx", 5).ToArray();
+            } else if (next.isRest) {
                 return Enumerable.Repeat("xx", 5).ToArray();
             } else {
                 return next.b();
@@ -316,6 +443,8 @@ namespace OpenUtau.Core.Util {
         public string[] d() {
             if (prev == null) {
                 return Enumerable.Repeat("xx", 60).ToArray();
+            } else if (prev.isRest) {
+                return Enumerable.Repeat("xx", 60).ToArray();
             } else {
                 return prev.e();
             }
@@ -323,8 +452,8 @@ namespace OpenUtau.Core.Util {
 
         public string[] e() {
             var result = Enumerable.Repeat("xx", 60).ToArray();
-            result[0] = HTS.GetToneName(tone);
-            result[1] = HTS.GetOctaveNum(tone);
+            result[0] = isRest ? "xx" : HTS.GetToneName(tone);
+            result[1] = isRest ? "xx" : HTS.GetOctaveNum(tone);
             result[2] = key.ToString();
             result[3] = $"{beatPerBar}/{beatUnit}";
             result[4] = bpm.ToString();
@@ -336,7 +465,7 @@ namespace OpenUtau.Core.Util {
             result[6] = lengthCs.ToString();
             result[7] = length96.ToString();
 
-            result[9]  = measureIndexForward != null ? measureIndexForward.ToString() : "xx";   // e10
+            result[9] = measureIndexForward != null ? measureIndexForward.ToString() : "xx";   // e10
             result[10] = measureIndexBackward != null ? measureIndexBackward.ToString() : "xx"; // e11
             result[11] = measureMsForward != null ? measureMsForward.ToString() : "xx";         // e12 (centisecond already)
             result[12] = measureMsBackward != null ? measureMsBackward.ToString() : "xx";       // e13
@@ -345,45 +474,48 @@ namespace OpenUtau.Core.Util {
             result[15] = measurePercentForward != null ? measurePercentForward.ToString() : "xx"; // e16
             result[16] = measurePercentBackward != null ? measurePercentBackward.ToString() : "xx"; // e17
 
-            result[17] = index <= 0 ? "xx" : index.ToString();
-            result[18] = indexBackwards <= 0 ? "xx" : indexBackwards.ToString();
-            result[19] = ((startMs + 50) / 100).ToString(); // 100ms単位
-            result[20] = ((startMsBackwards + 50) / 100).ToString();
+            if (!isRest) {
+                result[17] = index <= 0 ? "xx" : index.ToString();
+                result[18] = indexBackwards <= 0 ? "xx" : indexBackwards.ToString();
+                result[19] = ((startMs + 50) / 100).ToString(); // 100ms単位
+                result[20] = ((startMsBackwards + 50) / 100).ToString();
 
-            // e22/e23: phrase-level position by 96th note, resolution independent
-            if (ticksPer96th > 0 && parent != null && parent.notes != null && index > 0) {
-                int forwardTicks = 0;
-                int idx = Math.Min(index - 1, parent.notes.Length - 1);
-                for (int i = 0; i < idx; i++) {
-                    forwardTicks += parent.notes[i].durationTicks;
+                // e22/e23: phrase-level position by 96th note, resolution independent
+                if (ticksPer96th > 0 && parent != null && parent.notes != null && index > 0) {
+                    int forwardTicks = 0;
+                    int idx = Math.Min(index - 1, parent.notes.Length - 1);
+                    for (int i = 0; i < idx; i++) {
+                        forwardTicks += parent.notes[i].durationTicks;
+                    }
+                    int backwardTicks = Math.Max(0, sentenceDurTicks - forwardTicks);
+                    result[21] = ((forwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
+                    result[22] = ((backwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
+                } else {
+                    result[21] = "xx";
+                    result[22] = "xx";
                 }
-                int backwardTicks = Math.Max(0, sentenceDurTicks - forwardTicks);
-                result[21] = ((forwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
-                result[22] = ((backwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
-            } else {
-                result[21] = "xx";
-                result[22] = "xx";
+
+                if (sentenceDurMs > 0) {
+                    result[23] = ((startMs * 100) / sentenceDurMs).ToString();
+                    result[24] = (100 - ((startMs * 100) / sentenceDurMs)).ToString();
+                } else {
+                    result[23] = "xx";
+                    result[24] = "xx";
+                }
+
             }
 
-            if (sentenceDurMs > 0) {
-                result[23] = ((startMs * 100) / sentenceDurMs).ToString();
-                result[24] = (100 - ((startMs * 100) / sentenceDurMs)).ToString();
+            if (prev != null) {
+                result[25] = prev.isSlur && isSlur ? "1" : "0";
             } else {
-                result[23] = "xx";
-                result[24] = "xx";
-            }
-
-            if (prev == null) {
                 result[25] = "0";
-            } else if (!prev.isRest) {
-                result[25] = prev.isSlur ? "1" : "0";
             }
-            if (next == null) {
+            if (next != null) {
+                result[26] = next.isSlur && isSlur ? "1" : "0";
+            } else {
                 result[26] = "0";
-            } else if (!next.isRest) {
-                result[26] = next.isSlur ? "1" : "0";
             }
-            result[27] = "n";
+                result[27] = "n";
             result[28] = accentIndexBackward.HasValue ? accentIndexBackward.Value.ToString() : "xx";
             result[29] = accentIndexForward.HasValue ? accentIndexForward.Value.ToString() : "xx";
             result[30] = accentMsBackward.HasValue ? ((int)Math.Round(accentMsBackward.Value / 10.0)).ToString() : "xx";
@@ -391,12 +523,17 @@ namespace OpenUtau.Core.Util {
             result[32] = (accentTickBackward.HasValue && ticksPer96th > 0) ? ((int)Math.Round((double)accentTickBackward.Value / ticksPer96th)).ToString() : "xx";
             result[33] = (accentTickForward.HasValue && ticksPer96th > 0) ? ((int)Math.Round((double)accentTickForward.Value / ticksPer96th)).ToString() : "xx";
 
-            if (this.tone > 0) {
-                result[56] = (prev == null || prev.tone <= 0) ? "p0" : HTS.WriteInt(prev.tone - tone);
-                result[57] = (next == null || next.tone <= 0) ? "p0" : HTS.WriteInt(next.tone - tone);
+            // TODO: e34-e56 remain intentionally "xx" until OpenUtau adopts a
+            // verified mapping for staccato / crescendo / decrescendo related
+            // score-label contexts. Keep current behavior visible instead of
+            // guessing values from timing-label-only information.
+
+            if (!isRest && this.tone > 0) {
+                result[56] = (prev == null || prev.isRest || prev.tone <= 0) ? "xx" : HTS.WriteInt(prev.tone - tone);
+                result[57] = (next == null || next.isRest || next.tone <= 0) ? "xx" : HTS.WriteInt(next.tone - tone);
             } else {
-                result[56] = "p0";
-                result[57] = "p0";
+                result[56] = "xx";
+                result[57] = "xx";
             }
             return result;
         }
@@ -404,20 +541,38 @@ namespace OpenUtau.Core.Util {
         public string[] f() {
             if (next == null) {
                 return Enumerable.Repeat("xx", 60).ToArray();
+            } else if (next.isRest) {
+                return Enumerable.Repeat("xx", 60).ToArray();
             } else {
                 return next.e();
             }
         }
 
         public string[] g() {
+            //TODO Calculate using HTSPhrase
+            if (prev != null) {
+                if (isRest) {
+                    return prev.h();
+                }
+            }
             return parent.g();
         }
 
         public string[] h() {
+            // TODO Calculate using HTSPhrase
+            if (isRest) {
+                return Enumerable.Repeat("xx", 2).ToArray();
+            }
             return parent.h();
         }
 
         public string[] i() {
+            //TODO Calculate using HTSPhrase
+            if (next != null) {
+                if (isRest) {
+                    return next.h();
+                }
+            }
             return parent.i();
         }
 
@@ -438,6 +593,31 @@ namespace OpenUtau.Core.Util {
 
         public HTSPhrase(HTSNote[] notes) {
             this.notes = notes;
+            RecalculateDerivedContexts();
+        }
+
+        public void UpdateResolution(int resolution) {
+            this.resolution = resolution;
+            RecalculateDerivedContexts();
+        }
+
+        void RecalculateDerivedContexts() {
+            foreach (var note in notes) {
+                note.accentIndexForward = null;
+                note.accentMsForward = null;
+                note.accentTickForward = null;
+                note.accentIndexBackward = null;
+                note.accentMsBackward = null;
+                note.accentTickBackward = null;
+                note.measureIndexForward = null;
+                note.measureMsForward = null;
+                note.measureTickForward = null;
+                note.measurePercentForward = null;
+                note.measureIndexBackward = null;
+                note.measureMsBackward = null;
+                note.measureTickBackward = null;
+                note.measurePercentBackward = null;
+            }
 
             // アクセント（forward）
             int accentIndexForwardSum = 0;
@@ -450,17 +630,13 @@ namespace OpenUtau.Core.Util {
                     accentMsForwardSum = 0;
                     accentTickForwardSum = 0;
                 } else if (!string.IsNullOrEmpty(note.accent)) {
-                    accentIndexForwardSum = 0;
-                    note.accentIndexForward = accentIndexForwardSum;
-                    accentIndexForwardSum += 1;
-
-                    accentMsForwardSum = 0;
-                    note.accentMsForward = accentMsForwardSum;
-                    accentMsForwardSum += note.durationMs;
-
-                    accentTickForwardSum = 0;
-                    note.accentTickForward = accentTickForwardSum;
-                    accentTickForwardSum += note.durationTicks; // ticks で累積
+                    note.accentIndexForward = 0;
+                    note.accentMsForward = 0;
+                    note.accentTickForward = 0;
+                    
+                    accentIndexForwardSum = 1;
+                    accentMsForwardSum = note.durationMs;
+                    accentTickForwardSum = note.durationTicks;
                 } else {
                     if (accentIndexForwardSum != 0) {
                         note.accentIndexForward = accentIndexForwardSum;
@@ -472,7 +648,7 @@ namespace OpenUtau.Core.Util {
                     }
                     if (accentTickForwardSum != 0) {
                         note.accentTickForward = accentTickForwardSum;
-                        accentTickForwardSum += note.durationTicks; // ticks で累積
+                        accentTickForwardSum += note.durationTicks;
                     }
                 }
             }
@@ -506,13 +682,19 @@ namespace OpenUtau.Core.Util {
                     accentMsBackwardSum = note.durationMs;
                     accentTickBackwardSum = note.durationTicks;
                 } else {
-                    note.accentIndexBackward = accentIndexBackwardSum;
-                    note.accentMsBackward = accentMsBackwardSum;
-                    note.accentTickBackward = accentTickBackwardSum;
+                    if (accentIndexBackwardSum != 0) {
+                        note.accentIndexBackward = accentIndexBackwardSum;
+                        accentIndexBackwardSum += 1;
+                    }
+                    if (accentMsBackwardSum != 0) {
+                        note.accentMsBackward = accentMsBackwardSum;
+                        accentMsBackwardSum += note.durationMs;
+                    }
+                    if (accentTickBackwardSum != 0) {
+                        note.accentTickBackward = accentTickBackwardSum;
+                        accentTickBackwardSum += note.durationTicks;
+                    }
 
-                    accentIndexBackwardSum += 1;
-                    accentMsBackwardSum += note.durationMs;
-                    accentTickBackwardSum += note.durationTicks;
                 }
             }
 
@@ -528,6 +710,7 @@ namespace OpenUtau.Core.Util {
             foreach (var group in groups) {
                 int totalDurationMs = group.Sum(n => n.durationMs);
                 int totalDurationTicks = group.Sum(n => n.durationTicks);
+                int totalNotesInMeasure = group.Count;
 
                 // forward（小節先頭からの位置）
                 int idxF = 1;
@@ -536,8 +719,8 @@ namespace OpenUtau.Core.Util {
                 foreach (var note in group) {
                     note.measureIndexForward = idxF;
                     note.measureMsForward = (int)Math.Round(accMsF / 100.0);
-                    note.measureTickForward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksF / ticksPer96th / 10) : 0;
-                    note.measurePercentForward = totalDurationMs > 0 ? (accMsF * 100) / totalDurationMs : 0;
+                    note.measureTickForward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksF / ticksPer96th) : 0;
+                    note.measurePercentForward = totalNotesInMeasure > 1 ? ((idxF - 1) * 100) / (totalNotesInMeasure - 1) : 0;
 
                     idxF += 1;
                     accMsF += note.durationMs;
@@ -550,14 +733,18 @@ namespace OpenUtau.Core.Util {
                 int accTicksB = 0;
                 for (int i = group.Count - 1; i >= 0; --i) {
                     var note = group[i];
-                    note.measureIndexBackward = idxB;
-                    note.measureMsBackward = (int)Math.Round(accMsB / 100.0);
-                    note.measureTickBackward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksB / ticksPer96th / 10) : 0;
-                    note.measurePercentBackward = totalDurationMs > 0 ? (accMsB * 100) / totalDurationMs : 0;
 
-                    idxB += 1;
+                    // 累積を先に加算（ノートの終了位置からの距離）
                     accMsB += note.durationMs;
                     accTicksB += note.durationTicks;
+
+                    // その後に値を設定
+                    note.measureIndexBackward = idxB;
+                    note.measureMsBackward = (int)Math.Round(accMsB / 100.0);
+                    note.measureTickBackward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksB / ticksPer96th) : 0;
+                    note.measurePercentBackward = totalNotesInMeasure > 1 ? ((idxB - 1) * 100) / (totalNotesInMeasure - 1) : 0;
+
+                    idxB += 1;
                 }
             }
         }
@@ -597,6 +784,5 @@ namespace OpenUtau.Core.Util {
             result[2] = totalPhrases.ToString();
             return result;
         }
-
     }
 }
