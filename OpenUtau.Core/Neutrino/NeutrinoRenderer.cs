@@ -289,6 +289,10 @@ namespace OpenUtau.Core.Neutrino {
                             htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
                         }
                     }
+                }
+            }
+            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
+                if (htsPhonemes[i].type.Equals("c")) {
                     int next = i + 1;
                     if (next < htsPhonemes.Length) {
                         if (htsPhonemes[next].type.Equals("v")) {
@@ -374,6 +378,10 @@ namespace OpenUtau.Core.Neutrino {
                 var phonemes = phrase.phones.Where(ph => ph.noteIndex == noteIndex).Select(ph => ph.phoneme).ToArray();
                 HTSNote htsNote = makeHtsNote(phonemes, phrase.notes[noteIndex], startTick);
                 htsNotes.Add(htsNote);
+                htsNote.index = noteIndex;
+                htsNote.indexBackwards = phrase.notes.Length - noteIndex;
+                htsNote.sentenceDurMs = sentenceDurMs;
+                htsNote.sentenceDurTicks = sentenceDurTicks;
                 var tmpPhonemes = HTSNoteToPhonemes(htsNote);
                 var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase.notes[noteIndex]) ?? tmpPhonemes;
                 //分析第几个音素与音符对齐
@@ -423,10 +431,6 @@ namespace OpenUtau.Core.Neutrino {
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].parent = htsPhrase;
-                htsNotes[i].index = i;
-                htsNotes[i].indexBackwards = htsNotes.Count - i;
-                htsNotes[i].sentenceDurMs = sentenceDurMs;
-                htsNotes[i].sentenceDurTicks = sentenceDurTicks;
                 if (i > 0) {
                     htsNotes[i].prev = htsNotes[i - 1];
                     htsNotes[i - 1].next = htsNotes[i];

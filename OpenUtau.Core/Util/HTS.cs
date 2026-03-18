@@ -461,17 +461,21 @@ namespace OpenUtau.Core.Util {
             if (!isRest) {
                 result[17] = index <= 0 ? "xx" : index.ToString();
                 result[18] = indexBackwards <= 0 ? "xx" : indexBackwards.ToString();
-                result[19] = ((startMs + 50) / 100).ToString(); // 100ms単位
-                result[20] = ((startMsBackwards + 50) / 100).ToString();
+                result[19] = (startMs / 10).ToString(); // 10ms単位
+                result[20] = (startMsBackwards / 10).ToString();
 
                 // e22/e23: phrase-level position by 96th note, resolution independent
                 if (ticksPer96th > 0 && parent != null && parent.notes != null && index > 0) {
-                    int forwardTicks = 0;
-                    int idx = Math.Min(index - 1, parent.notes.Length - 1);
-                    for (int i = 0; i < idx; i++) {
-                        forwardTicks += parent.notes[i].durationTicks;
-                    }
-                    int backwardTicks = Math.Max(0, sentenceDurTicks - forwardTicks);
+                    int firstPhraseTick = parent.notes
+                        .Select(note => note.positionTicks)
+                        .DefaultIfEmpty(positionTicks)
+                        .Min();
+                    int lastPhraseTick = parent.notes
+                        .Select(note => note.positionTicks)
+                        .DefaultIfEmpty(positionTicks)
+                        .Max();
+                    int forwardTicks = Math.Max(0, positionTicks - firstPhraseTick);
+                    int backwardTicks = Math.Max(0, lastPhraseTick - positionTicks);
                     result[21] = ((forwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
                     result[22] = ((backwardTicks + ticksPer96th / 2) / ticksPer96th).ToString();
                 } else {
@@ -479,9 +483,10 @@ namespace OpenUtau.Core.Util {
                     result[22] = "xx";
                 }
 
-                if (sentenceDurMs > 0) {
-                    result[23] = ((startMs * 100) / sentenceDurMs).ToString();
-                    result[24] = (100 - ((startMs * 100) / sentenceDurMs)).ToString();
+                int totalNotes = parent?.totalNotes ?? 0;
+                if (totalNotes > 1) {
+                    result[23] = ((index - 1) * 100 / (totalNotes - 1)).ToString();
+                    result[24] = ((indexBackwards - 1) * 100 / (totalNotes - 1)).ToString();
                 } else {
                     result[23] = "xx";
                     result[24] = "xx";
@@ -695,40 +700,33 @@ namespace OpenUtau.Core.Util {
                 int totalDurationMs = group.Sum(n => n.durationMs);
                 int totalDurationTicks = group.Sum(n => n.durationTicks);
                 int totalNotesInMeasure = group.Count;
-
                 // forward（小節先頭からの位置）
-                int idxF = 1;
                 int accMsF = 0;
                 int accTicksF = 0;
-                foreach (var note in group) {
-                    note.measureIndexForward = idxF;
+                for (var noteIndex = 0; noteIndex < group.Count; noteIndex++) {
+                    var note = group[noteIndex];
+                    note.measureIndexForward = noteIndex + 1;
                     note.measureMsForward = (int)Math.Round(accMsF / 100.0);
                     note.measureTickForward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksF / ticksPer96th) : 0;
-                    note.measurePercentForward = totalNotesInMeasure > 1 ? ((idxF - 1) * 100) / (totalNotesInMeasure - 1) : 0;
+                    note.measurePercentForward = totalNotesInMeasure > 1 ? (noteIndex * 100) / (totalNotesInMeasure - 1) : 0;
 
-                    idxF += 1;
                     accMsF += note.durationMs;
                     accTicksF += note.durationTicks;
                 }
 
                 // backward
-                int idxB = 1;
                 int accMsB = 0;
                 int accTicksB = 0;
-                for (int i = group.Count - 1; i >= 0; --i) {
-                    var note = group[i];
-
-                    // 累積を先に加算（ノートの終了位置からの距離）
-                    accMsB += note.durationMs;
-                    accTicksB += note.durationTicks;
-
-                    // その後に値を設定
-                    note.measureIndexBackward = idxB;
+                for (int noteIndex = group.Count - 1; noteIndex >= 0; --noteIndex) {
+                    var note = group[noteIndex];
+                    int backwardIndex = group.Count - noteIndex;
+                    note.measureIndexBackward = backwardIndex;
                     note.measureMsBackward = (int)Math.Round(accMsB / 100.0);
                     note.measureTickBackward = ticksPer96th > 0 ? (int)Math.Round((double)accTicksB / ticksPer96th) : 0;
-                    note.measurePercentBackward = totalNotesInMeasure > 1 ? ((idxB - 1) * 100) / (totalNotesInMeasure - 1) : 0;
+                    note.measurePercentBackward = totalNotesInMeasure > 1 ? ((backwardIndex - 1) * 100) / (totalNotesInMeasure - 1) : 0;
 
-                    idxB += 1;
+                    accMsB += note.durationMs;
+                    accTicksB += note.durationTicks;
                 }
             }
         }

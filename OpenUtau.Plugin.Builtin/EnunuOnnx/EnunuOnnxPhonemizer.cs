@@ -456,6 +456,20 @@ namespace OpenUtau.Plugin.Builtin {
                 htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
+            }
+            foreach (int i in Enumerable.Range(0, htsPhonemes.Length)) {
+                if (htsPhonemes[i].type.Equals("c")) {
+                    int next = i + 1;
+                    if (next < htsPhonemes.Length) {
+                        if (htsPhonemes[next].type.Equals("v")) {
+                            htsPhonemes[i].next_vowel_distance = 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        }
+                    }
+                }
+            }
+            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
                 if (htsPhonemes[i].type.Equals("c")) {
                     int prev = i - 1;
                     if (prev >= 0) {
@@ -463,14 +477,6 @@ namespace OpenUtau.Plugin.Builtin {
                             htsPhonemes[i].prev_vowel_distance = 1;
                         } else {
                             htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
-                        }
-                    }
-                    int next = i + 1;
-                    if (next < htsPhonemes.Length) {
-                        if (htsPhonemes[next].type.Equals("v")) {
-                            htsPhonemes[i].next_vowel_distance = 1;
-                        } else {
-                            htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
                         }
                     }
                 }
@@ -546,9 +552,6 @@ namespace OpenUtau.Plugin.Builtin {
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].parent = htsPhrase;
-                htsNotes[i].index = i;
-                htsNotes[i].indexBackwards = htsNotes.Count - i;
-                htsNotes[i].sentenceDurMs = sentenceDurMs;
                 if (i > 0) {
                     htsNotes[i].prev = htsNotes[i - 1];
                     htsNotes[i - 1].next = htsNotes[i];

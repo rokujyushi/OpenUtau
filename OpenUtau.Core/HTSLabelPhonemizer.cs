@@ -415,21 +415,31 @@ namespace OpenUtau.Core {
                 htsPhonemes[i].type = GetPhonemeType(htsPhonemes[i].symbol);
                 htsPhonemes[i].position = i + 1;
                 htsPhonemes[i].position_backward = htsPhonemes.Length - i;
+            }
+            foreach (int i in Enumerable.Range(0, htsPhonemes.Length)) {
                 if (htsPhonemes[i].type.Equals("c")) {
                     int prev = i - 1;
                     if (prev >= 0) {
                         if (htsPhonemes[prev].type.Equals("v")) {
                             htsPhonemes[i].prev_vowel_distance = 1;
-                        } else {
+                        } else if (htsPhonemes[prev].prev_vowel_distance > 0) {
                             htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
+                        } else {
+                            htsPhonemes[i].prev_vowel_distance = 0;
                         }
                     }
+                }
+            }
+            for (int i = htsPhonemes.Length - 1; i >= 0; --i) {
+                if (htsPhonemes[i].type.Equals("c")) {
                     int next = i + 1;
                     if (next < htsPhonemes.Length) {
                         if (htsPhonemes[next].type.Equals("v")) {
                             htsPhonemes[i].next_vowel_distance = 1;
-                        } else {
+                        } else if (htsPhonemes[next].next_vowel_distance > 0) {
                             htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = 0;
                         }
                     }
                 }
@@ -529,7 +539,8 @@ namespace OpenUtau.Core {
                 }
                 htsNotes.AddRange(Syllables);
 
-                foreach (var htsNote in Syllables) {
+                for (var noteIndex = 0; noteIndex < Syllables.Length; noteIndex++) {
+                    var htsNote = Syllables[noteIndex];
                     var tmpPhonemes = HTSNoteToPhonemes(htsNote);
                     var notePhonemes = CustomHTSPhonemeContext(tmpPhonemes, phrase[n]) ?? tmpPhonemes;
 
@@ -582,14 +593,14 @@ namespace OpenUtau.Core {
             ));
             var htsPhrase = new HTSPhrase(htsNotes.ToArray());
             htsPhrase.UpdateResolution(resolution);
-            htsPhrase.totalNotes = htsNotes.Count;
-            htsPhrase.totalPhonemes = htsPhonemes.Count;
+            htsPhrase.totalNotes = htsNotes.Count - 2;
+            htsPhrase.totalPhonemes = htsPhonemes.Count - 3;
             htsPhrase.totalPhrases = 1;
             //make neighborhood links between htsNotes and between htsPhonemes
             foreach (int i in Enumerable.Range(0, htsNotes.Count)) {
                 htsNotes[i].parent = htsPhrase;
                 htsNotes[i].index = i;
-                htsNotes[i].indexBackwards = htsNotes.Count - i;
+                htsNotes[i].indexBackwards = htsNotes.Count - i - 1;
                 htsNotes[i].sentenceDurMs = sentenceDurMs;
                 htsNotes[i].sentenceDurTicks = sentenceDurTicks;
                 if (i > 0) {
