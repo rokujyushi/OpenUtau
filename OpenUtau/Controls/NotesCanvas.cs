@@ -144,7 +144,7 @@ namespace OpenUtau.App.Controls {
             if (Part == null) {
                 return;
             }
-            var viewModel = ((PianoRollViewModel?)DataContext)?.NotesViewModel;
+            var viewModel = (DataContext as PianoRollViewModel)?.NotesViewModel;
             if (viewModel == null) {
                 return;
             }

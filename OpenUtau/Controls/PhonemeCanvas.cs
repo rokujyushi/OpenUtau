@@ -100,7 +100,7 @@ namespace OpenUtau.App.Controls {
                 return;
             }
             string langCode = PhonemeUIRender.getLangCode(Part);
-            var viewModel = ((PianoRollViewModel?)DataContext)?.NotesViewModel;
+            var viewModel = (DataContext as PianoRollViewModel)?.NotesViewModel;
             if (viewModel == null) {
                 return;
             }
