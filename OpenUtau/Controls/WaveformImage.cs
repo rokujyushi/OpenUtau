@@ -67,53 +67,60 @@ namespace OpenUtau.App.Controls {
         }
 
         public override void Render(DrawingContext context) {
-            if (DataContext == null || double.IsNaN(((NotesViewModel)DataContext).TickOffset)) {
+            var viewModel = DataContext as NotesViewModel;
+            if (viewModel == null) {
                 return;
             }
-            var bitmap = GetBitmap();
-            if (bitmap != null) {
-                Array.Clear(bitmapData, 0, bitmapData.Length);
-                var viewModel = (NotesViewModel?)DataContext;
-                if (viewModel != null && ShowWaveform &&
-                    viewModel.TickWidth > ViewConstants.PianoRollTickWidthShowDetails) {
-                    var project = viewModel.Project;
-                    var part = viewModel.Part;
-                    if (project != null && part != null && part.Mix != null) {
-                        double leftMs = project.timeAxis.TickPosToMsPos(viewModel.TickOrigin + viewModel.TickOffset);
-                        double rightMs = project.timeAxis.TickPosToMsPos(viewModel.TickOrigin + viewModel.TickOffset + viewModel.ViewportTicks);
-                        int samplePos = (int)(leftMs * 44100 / 1000) * 2;
-                        sampleCount = (int)((rightMs - leftMs) * 44100 / 1000) * 2;
-                        if (sampleData.Length < sampleCount) {
-                            Array.Resize(ref sampleData, sampleCount);
-                        }
-                        Array.Clear(sampleData, 0, sampleData.Length);
-                        part.Mix.Mix(samplePos, sampleData, 0, sampleCount);
-
-                        int startSample = 0;
-                        for (int i = 0; i < bitmap.PixelSize.Width; ++i) {
-                            double endTick = viewModel.TickOrigin + viewModel.TickOffset + (i + 1.0) / viewModel.TickWidth;
-                            double endMs = project.timeAxis.TickPosToMsPos(endTick);
-                            int endSample = Math.Clamp((int)((endMs - leftMs) * 44100 / 1000) * 2, 0, sampleCount);
-                            if (endSample > startSample) {
-                                var segment = new ArraySegment<float>(sampleData, startSample, endSample - startSample);
-                                float min = 0.5f + segment.Min() * 0.5f;
-                                float max = 0.5f + segment.Max() * 0.5f;
-                                float yMax = Math.Clamp(max * bitmap.PixelSize.Height, 0, bitmap.PixelSize.Height - 1);
-                                float yMin = Math.Clamp(min * bitmap.PixelSize.Height, 0, bitmap.PixelSize.Height - 1);
-                                DrawPeak(bitmapData, bitmap.PixelSize.Width, i, (int)Math.Round(yMin), (int)Math.Round(yMax));
+            if (double.IsNaN(viewModel.TickOffset)) {
+                return;
+            }
+            try {
+                var bitmap = GetBitmap();
+                if (bitmap != null) {
+                    Array.Clear(bitmapData, 0, bitmapData.Length);
+                    if (viewModel != null && ShowWaveform &&
+                        viewModel.TickWidth > ViewConstants.PianoRollTickWidthShowDetails) {
+                        var project = viewModel.Project;
+                        var part = viewModel.Part;
+                        if (project != null && part != null && part.Mix != null) {
+                            double leftMs = project.timeAxis.TickPosToMsPos(viewModel.TickOrigin + viewModel.TickOffset);
+                            double rightMs = project.timeAxis.TickPosToMsPos(viewModel.TickOrigin + viewModel.TickOffset + viewModel.ViewportTicks);
+                            int samplePos = (int)(leftMs * 44100 / 1000) * 2;
+                            sampleCount = (int)((rightMs - leftMs) * 44100 / 1000) * 2;
+                            if (sampleData.Length < sampleCount) {
+                                Array.Resize(ref sampleData, sampleCount);
                             }
-                            startSample = endSample;
+                            Array.Clear(sampleData, 0, sampleData.Length);
+                            part.Mix.Mix(samplePos, sampleData, 0, sampleCount);
+
+                            int startSample = 0;
+                            for (int i = 0; i < bitmap.PixelSize.Width; ++i) {
+                                double endTick = viewModel.TickOrigin + viewModel.TickOffset + (i + 1.0) / viewModel.TickWidth;
+                                double endMs = project.timeAxis.TickPosToMsPos(endTick);
+                                int endSample = Math.Clamp((int)((endMs - leftMs) * 44100 / 1000) * 2, 0, sampleCount);
+                                if (endSample > startSample) {
+                                    var segment = new ArraySegment<float>(sampleData, startSample, endSample - startSample);
+                                    float min = 0.5f + segment.Min() * 0.5f;
+                                    float max = 0.5f + segment.Max() * 0.5f;
+                                    float yMax = Math.Clamp(max * bitmap.PixelSize.Height, 0, bitmap.PixelSize.Height - 1);
+                                    float yMin = Math.Clamp(min * bitmap.PixelSize.Height, 0, bitmap.PixelSize.Height - 1);
+                                    DrawPeak(bitmapData, bitmap.PixelSize.Width, i, (int)Math.Round(yMin), (int)Math.Round(yMax));
+                                }
+                                startSample = endSample;
+                            }
                         }
                     }
+                    using (var frameBuffer = bitmap.Lock()) {
+                        Marshal.Copy(bitmapData, 0, frameBuffer.Address, bitmapData.Length);
+                    }
                 }
-                using (var frameBuffer = bitmap.Lock()) {
-                    Marshal.Copy(bitmapData, 0, frameBuffer.Address, bitmapData.Length);
+                base.Render(context);
+                if (bitmap != null) {
+                    var rect = Bounds.WithX(0).WithY(0);
+                    context.DrawImage(bitmap, rect, rect);
                 }
-            }
-            base.Render(context);
-            if (bitmap != null) {
-                var rect = Bounds.WithX(0).WithY(0);
-                context.DrawImage(bitmap, rect, rect);
+            } catch (Exception ex) {
+                Log.Error(ex, "Error rendering waveform");
             }
         }
 
