@@ -30,7 +30,6 @@ namespace OpenUtau.Core {
         protected IG2p g2p;
         //result caching
         private Dictionary<int, List<Tuple<string, int>>> partResult = new Dictionary<int, List<Tuple<string, int>>>();
-        int paddingMs = 500;//子音の持続時間
 
         protected string tmpPath = string.Empty;
         protected string tablePath = string.Empty;
@@ -194,6 +193,7 @@ namespace OpenUtau.Core {
         protected abstract HTSNote CustomHTSNoteContext(HTSNote htsNote, Note note);
 
         //make a HTS Note from given symbols and UNotes
+        //TODO:Fix the processing for rests
         protected HTSNote makeHtsNote(string[] symbols, IList<Note> group, int startTick) {
             var htsNote = HTSContextBuilder.BuildNote(
                 symbols,
@@ -633,7 +633,9 @@ namespace OpenUtau.Core {
 
             // 100ns -> ms は 10000 で割る
             List<double> labPositions =
-                hTSLabels.Select(label => (double)(label.end_time - label.start_time) / 10000.0).ToList();
+                hTSLabels.Skip(1).SkipLast(1).Select(label => (double)(label.end_time - label.start_time) / 10000.0).ToList();
+            labPositions.Insert(0, labPositions[0]);
+            labPositions.Add(labPositions[^1]);
 
             var positions = HTSContextBuilder.AlignTimingPositions(labPositions, phAlignPoints);
 
