@@ -643,6 +643,13 @@ namespace OpenUtau.Core.Neutrino {
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
                             }
+                        if (!phrase.phones[0].direct) {
+                            float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
+                            float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
+                            string ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
+                            ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
+
+                        } else {
                             double[] f0 = LoadFile(f0Path);
                             double[,] mgc = Array2DArray(LoadFile(mgcPath), 60);
                             double[,] bap = Array2DArray(LoadFile(bapPath), 5);
