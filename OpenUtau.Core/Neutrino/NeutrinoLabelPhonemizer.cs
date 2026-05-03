@@ -139,7 +139,7 @@ namespace OpenUtau.Core.Neutrino {
                 var attr = phrase[0][0].phonemeAttributes?.FirstOrDefault(attr => attr.index == 0) ?? default;
                 int toneShift = attr.toneShift;
                 int numThreads = Preferences.Default.NumRenderThreads;
-                int gpuMode = -1;
+                //int gpuMode = -1;
                 //switch (Preferences.Default.OnnxRunner) {
                 //    case "directml":
                 //        gpuMode = Preferences.Default.OnnxGpu;
