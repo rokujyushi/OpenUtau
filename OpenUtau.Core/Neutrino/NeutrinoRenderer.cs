@@ -16,10 +16,30 @@ using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using Serilog;
 using SharpCompress;
+using ThirdParty;
 
 namespace OpenUtau.Core.Neutrino {
     public class NeutrinoRenderer : IRenderer {
-        const string ENG = "eng";
+        const string NTYP = "ntyp";
+        const string NMOD = "nmod";
+        const string SMOC = "smoc";
+
+        enum NeutrinoRenderType {
+            WORLD,
+            NSF,
+        }
+
+        enum NeutrinoRenderMode {
+            Elements = 2,
+            Standard = 3,
+            Advanced = 4,
+        }
+
+        enum NsfModel {
+            va,
+            vs,
+            ve,
+        }
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
             Format.Ustx.DYN,
@@ -29,8 +49,10 @@ namespace OpenUtau.Core.Neutrino {
             Format.Ustx.TENC,
             Format.Ustx.BREC,
             Format.Ustx.VOIC,
-            ENG,
-            Format.Ustx.DIR
+            Format.Ustx.DIR,
+            NTYP,
+            NMOD,
+            SMOC
         };
 
         static readonly object lockObj = new object();
@@ -49,8 +71,7 @@ namespace OpenUtau.Core.Neutrino {
         string NeutrinoExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
-        string[] Eng = new string[] { "NSF", "WORLD" };
-        const int fs = 48000;
+        int sampleRate = 48000;
         //information used by HTS writer
         protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
         protected List<string> vowels = new List<string>();
@@ -547,26 +568,29 @@ namespace OpenUtau.Core.Neutrino {
                         string modelDir = this.singer.Location + "\\";
                         int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
                         int numThreads = Preferences.Default.NumRenderThreads;
-                        //int gpuMode = -1;
-                        //switch (Preferences.Default.OnnxRunner) {
-                        //    case "directml":
-                        //        gpuMode = Preferences.Default.OnnxGpu;
-                        //        break;
-                        //    default:
-                        //        gpuMode = -1;
-                        //        break;
-                        //}
-                        string nsf = "ve";
-                        int sampleRate = fs / 1000;
                         if (!File.Exists(fullScorePath) && !File.Exists(monoTimingPath)) {
                             ProcessPart(phrase);
                         }
-                        var flag1 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(ENG));
+                    var flag1 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(NTYP));
                         string eng = string.Empty;
                         if (flag1 != null) {
                             eng = flag1.Item1;
                         }
-                        if (eng.Equals(Eng[0])) {
+                    if (eng.Equals(NeutrinoRenderType.NSF.ToString())) {
+                        var flag2 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(NMOD));
+                        string nsf = "ve";
+                        if (flag2 != null) {
+                            if (flag2.Item2 == 4) {
+                                nsf = NsfModel.va.ToString();
+                                sampleRate = 48000;
+                            } else if (flag2.Item2 == 3) {
+                                nsf = NsfModel.vs.ToString();
+                                sampleRate = 48000;
+                            } else if (flag2.Item2 == 2) {
+                                nsf = NsfModel.ve.ToString();
+                                sampleRate = 24000;
+                            }
+                        }
                             string ArgParam = string.Empty;
                             if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
                                 ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
@@ -582,15 +606,15 @@ namespace OpenUtau.Core.Neutrino {
                                 int tailFrames = (int)Math.Round(tailMs / framePeriod);
                                 double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                                 SaveFile(editorf0Path, editorF0);
-                                ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate} -f {toneShift} -m -t";
+                            ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
                             } else {
-                                ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate} -f {toneShift} -m -t";
+                            ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
                             }
                             ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
                             using (var waveStream = new WaveFileReader(wavPath)) {
                                 result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
                                 Wave.CorrectSampleScale(result.samples);
-                                var signal = new NWaves.Signals.DiscreteSignal((48000), result.samples);
+                            var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
                                 signal = NWaves.Operations.Operation.Resample(signal, 44100);
                                 var source = new WaveSource(0, 0, 0, 1);
                                 source.SetSamples(result.samples);
@@ -630,11 +654,11 @@ namespace OpenUtau.Core.Neutrino {
                                 editorF0,
                                 mgc, true, mgc.Length - 1,
                                 bap, true, bap.Length - 1,
-                                framePeriod, fs,
+                                framePeriod, sampleRate,
                                 gender, tension, breathiness, voicing);
                             result.samples = samples.Select(d => (float)d).ToArray();
                             Wave.CorrectSampleScale(result.samples);
-                            var signal = new NWaves.Signals.DiscreteSignal((sampleRate * 1000), result.samples);
+                            var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
                             signal = NWaves.Operations.Operation.Resample(signal, 44100);
                             result.samples = signal.Samples;
                             var source = new WaveSource(0, 0, 0, 1);
@@ -685,7 +709,45 @@ namespace OpenUtau.Core.Neutrino {
 
 
         public UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings) {
-            return null;
+            var result = new List<UExpressionDescriptor> {
+                //energy
+                //new UExpressionDescriptor{
+                //    name="energy (curve)",
+                //    abbr=ENE,
+                //    type=UExpressionType.Curve,
+                //    min=-100,
+                //    max=100,
+                //    defaultValue=0,
+                //    isFlag=false,
+                //},
+                //engine
+                new UExpressionDescriptor {
+                    name = "NEUTRINO engine type (~2.x)",
+                    abbr = NTYP,
+                    type = UExpressionType.Options,
+                    options = Enum.GetNames<NeutrinoRenderType>(),
+                    isFlag = false
+                },
+                //engine mode
+                new UExpressionDescriptor {
+                    name = "NEUTRINO engine mode (~2.x)",
+                    abbr = NMOD,
+                    type = UExpressionType.Options,
+                    options = Enum.GetNames<NeutrinoRenderMode>(),
+                    isFlag = false
+                },
+                //expressiveness
+                new UExpressionDescriptor {
+                    name = "pitch smoothened (curve)",
+                    abbr = SMOC,
+                    type = UExpressionType.Curve,
+                    min = 0,
+                    max = 10,
+                    defaultValue = 0,
+                    isFlag = false
+                },
+            };
+            return result.ToArray();
         }
 
         public override string ToString() => Renderers.NEUTRINO;
