@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using K4os.Hash.xxHash;
 using NAudio.Wave;
-using NumSharp;
 using OpenUtau.Api;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Render;
@@ -65,7 +64,7 @@ namespace OpenUtau.Core.Neutrino {
             return supportedExp.Contains(descriptor.abbr);
         }
 
-        TimeAxis timeAxis;
+        private TimeAxis timeAxis;
 
         protected NeutrinoSinger singer;
         string NeutrinoExe = string.Empty;
@@ -80,17 +79,28 @@ namespace OpenUtau.Core.Neutrino {
         protected List<string> pauses = new List<string>();
         protected List<string> silences = new List<string>();
         protected List<string> unvoiced = new List<string>();
-        List<string> macronLyrics = new List<string>();
+        protected List<string> macronLyrics = new List<string>();
+        protected int startTick;
+        protected int endTick;
+        protected UTimeSignature sigStart;
+        protected double bpmStart;
+        protected int barLenMsStart;
+        protected int barLenTicksStart;
+        protected UTimeSignature sigEnd;
+        protected double bpmEnd;
+        protected int barLenMsEnd;
+        protected int barLenTicksEnd;
+        protected double headMs;
+        protected double tailMs;
         protected string lang = "";
-        int key = 0;
-        int resolution = 480;
+        protected int key = 0;
+        protected int resolution = 480;
+        protected int framePeriod = 5;
 
         //information used by openutau phonemizer
         protected IG2p g2p;
         //result caching
         private Dictionary<int, List<Tuple<string, int>>> partResult = new Dictionary<int, List<Tuple<string, int>>>();
-        int paddingMs = 500;//子音の持続時間
-
         protected string tablePath = string.Empty;
         protected string monoScorePath = string.Empty;
         protected string fullScorePath = string.Empty;
@@ -345,24 +355,15 @@ namespace OpenUtau.Core.Neutrino {
         }
 
         protected void ProcessPart(RenderPhrase phrase) {
+            if (timeAxis == null) {
             timeAxis = phrase.timeAxis;
+            }
 
             int startTick = phrase.position;
             int endTick = phrase.position + phrase.duration;
 
-            // パディングを小節長で設定（開始・終了ともに1小節）
-            var sigStart = timeAxis.TimeSignatureAtTick(startTick);
-            double bpmStart = timeAxis.GetBpmAtTick(startTick);
-            int barLenMsStart = (int)Math.Round((60000.0 / bpmStart) * sigStart.beatPerBar);
-            int barLenTicksStart = timeAxis.MsPosToTickPos(barLenMsStart);
-
-            var sigEnd = timeAxis.TimeSignatureAtTick(endTick);
-            double bpmEnd = timeAxis.GetBpmAtTick(endTick);
-            int barLenMsEnd = (int)Math.Round((60000.0 / bpmEnd) * sigEnd.beatPerBar);
-            int barLenTicksEnd = timeAxis.MsPosToTickPos(barLenMsEnd);
-
             // 文全体の長さ（開始1小節 + 本体 + 終了1小節）
-            int sentenceDurMs = barLenMsStart + (int)timeAxis.MsBetweenTickPos(startTick, endTick) + barLenMsEnd;
+            int sentenceDurMs = barLenMsStart + (int)(phrase.endMs - phrase.positionMs) + barLenMsEnd;
             int sentenceDurTicks = barLenTicksStart + (endTick - startTick) + barLenTicksEnd;
 
             int noteIndexAnchorOffset = 1; // 先頭パディング分
@@ -530,10 +531,27 @@ namespace OpenUtau.Core.Neutrino {
         }
 
         public RenderResult Layout(RenderPhrase phrase) {
+            if (timeAxis == null) {
+                timeAxis = phrase.timeAxis;
+            }
+            startTick = phrase.position;
+            endTick = phrase.position + phrase.duration;
+
+            // パディングを小節長で設定（開始・終了ともに1小節）
+            sigStart = timeAxis.TimeSignatureAtTick(startTick);
+            bpmStart = timeAxis.GetBpmAtTick(startTick);
+            barLenMsStart = (int)Math.Round((60000.0 / bpmStart) * sigStart.beatPerBar);
+
+            sigEnd = timeAxis.TimeSignatureAtTick(endTick);
+            bpmEnd = timeAxis.GetBpmAtTick(endTick);
+            barLenMsEnd = (int)Math.Round((60000.0 / bpmEnd) * sigEnd.beatPerBar);
+
+            headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position) - barLenMsStart;
+            tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end) - barLenMsEnd - phrase.endMs;
             return new RenderResult() {
-                leadingMs = phrase.leadingMs,
-                positionMs = phrase.positionMs,//- ((VoicevoxUtils.headS * 1000) + 10),
-                estimatedLengthMs = phrase.durationMs + phrase.leadingMs,
+                leadingMs = headMs,
+                positionMs = phrase.positionMs,
+                estimatedLengthMs = headMs + phrase.durationMs + tailMs,
             };
         }
 
@@ -598,7 +616,6 @@ namespace OpenUtau.Core.Neutrino {
                             }
                             if (phrase.phones[0].direct) {
                                 double[] f0 = LoadFile(f0Path);
-                                var framePeriod = 5;
                                 int totalFrames = f0.Length;
                                 var headMs = 0d;
                                 var tailMs = 0d;
@@ -629,13 +646,9 @@ namespace OpenUtau.Core.Neutrino {
                                 return new RenderResult();
                             }
                             double[] f0 = LoadFile(f0Path);
-                            double[,] mgc = Array2DArray(LoadFile(mgcPath),60);
-                            double[,] bap = Array2DArray(LoadFile(bapPath),5);
-
-                            var framePeriod = 5;
+                            double[,] mgc = Array2DArray(LoadFile(mgcPath), 60);
+                            double[,] bap = Array2DArray(LoadFile(bapPath), 5);
                             int totalFrames = f0.Length;
-                            var headMs = phrase.positionMs - phrase.timeAxis.TickPosToMsPos(phrase.position);
-                            var tailMs = phrase.timeAxis.TickPosToMsPos(phrase.end) - phrase.endMs;
                             int headFrames = (int)Math.Round(headMs / framePeriod);
                             int tailFrames = (int)Math.Round(tailMs / framePeriod);
 
@@ -755,12 +768,35 @@ namespace OpenUtau.Core.Neutrino {
         RenderPitchResult IRenderer.LoadRenderedPitch(RenderPhrase phrase) {
             try {
                 var hash = HashPhraseGroups(phrase);
-                var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}", "_entemp");
-                if (!Directory.Exists(tmpPath)) {
+                var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}", "_temp");
+                string f0Path = Path.Join(tmpPath, $"ne.f0");
+                if (!File.Exists(f0Path)) {
                     return null;
                 }
-                string f0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.f0");
-                var f0 = np.Load<double[]>(f0Path);
+                double[] f0 = LoadFile(f0Path);
+
+                int totalFrames = f0.Length;
+                int headFrames = (int)Math.Round(headMs / framePeriod);
+                int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                var exprCurve = phrase.curves.FirstOrDefault(curve => curve.Item1.Equals(SMOC));
+                if (exprCurve != null) {
+
+                    List<int> exprs = SampleCurve(phrase, exprCurve.Item2, 0, framePeriod, totalFrames, headFrames, tailFrames, x => x).Select(x => (int)x).ToList();
+                    var f0S = new F0Smoother(f0.ToList());
+                    f0S.SmoothenWidthList = exprs;
+                    f0 = f0S.GetSmoothenedF0List(f0.ToList()).ToArray();
+                }
+
+                var result = new RenderPitchResult() {
+                    tones = f0.Select(f => (float)MusicMath.FreqToTone(f)).ToArray(),
+                };
+                result.ticks = new float[result.tones.Length];
+                var layout = Layout(phrase);
+                var t = layout.positionMs - layout.leadingMs;
+                for (int i = 0; i < result.tones.Length; i++) {
+                    t += framePeriod;
+                    result.ticks[i] = phrase.timeAxis.MsPosToTickPos(t) - phrase.position;
+                }
             } catch {
             }
             return null;
