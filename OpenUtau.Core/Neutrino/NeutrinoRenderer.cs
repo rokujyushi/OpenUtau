@@ -569,20 +569,18 @@ namespace OpenUtau.Core.Neutrino {
                     }
                     var result = Layout(phrase);
                     var hash = HashPhraseGroups(phrase);
-                    var tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}_entemp");
+                    string tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{hash:x16}_temp");
                     if (!Directory.Exists(tmpPath)) {
                         Directory.CreateDirectory(tmpPath);
                     }
-                    var wavPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash:x16}.wav");
-                    if (!File.Exists(wavPath)) {
-                        string f0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.f0");
-                        string editorf0Path = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_edit.f0");
-                        string melspecPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.melspec");
-                        string mgcPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.mgc");
-                        string bapPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}.bap");
-                        fullScorePath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_full_score.lab");
-                        monoTimingPath = Path.Join(tmpPath, $"ne-{phrase.preEffectHash}_mono_timing.lab");
-
+                    string wavPath = Path.Join(tmpPath, $"ne.wav");
+                    string f0Path = Path.Join(tmpPath, $"ne.f0");
+                    string editorf0Path = Path.Join(tmpPath, $"ne-edit.f0");
+                    string melspecPath = Path.Join(tmpPath, $"ne.melspec");
+                    string mgcPath = Path.Join(tmpPath, $"ne.mgc");
+                    string bapPath = Path.Join(tmpPath, $"ne.bap");
+                    fullScorePath = Path.Join(tmpPath, $"ne_full_score.lab");
+                    monoTimingPath = Path.Join(tmpPath, $"ne_mono_timing.lab");
                         string modelDir = this.singer.Location + "\\";
                         int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
                         int numThreads = Preferences.Default.NumRenderThreads;
