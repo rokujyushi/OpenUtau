@@ -793,22 +793,22 @@ namespace OpenUtau.Core.Neutrino {
                 //    defaultValue=0,
                 //    isFlag=false,
                 //},
-                //engine
-                new UExpressionDescriptor {
-                    name = "NEUTRINO engine type (~2.x)",
-                    abbr = NTYP,
-                    type = UExpressionType.Options,
-                    options = Enum.GetNames<NeutrinoRenderType>(),
-                    isFlag = false
-                },
-                //engine mode
-                new UExpressionDescriptor {
-                    name = "NEUTRINO engine mode (~2.x)",
-                    abbr = NMOD,
-                    type = UExpressionType.Options,
-                    options = Enum.GetNames<NeutrinoRenderMode>(),
-                    isFlag = false
-                },
+                ////engine
+                //new UExpressionDescriptor {
+                //    name = "NEUTRINO engine type (~2.x)",
+                //    abbr = NTYP,
+                //    type = UExpressionType.Options,
+                //    options = Enum.GetNames<NeutrinoRenderType>(),
+                //    isFlag = false
+                //},
+                ////engine mode
+                //new UExpressionDescriptor {
+                //    name = "NEUTRINO engine mode (~2.x)",
+                //    abbr = NMOD,
+                //    type = UExpressionType.Options,
+                //    options = Enum.GetNames<NeutrinoRenderMode>(),
+                //    isFlag = false
+                //},
                 //expressiveness
                 new UExpressionDescriptor {
                     name = "pitch smoothened (curve)",
