@@ -12,7 +12,7 @@ using Serilog;
 using static System.Net.Mime.MediaTypeNames;
 
 namespace OpenUtau.Core {
-    public abstract class HTSLabelPhonemizer : Phonemizer {
+    public abstract class HTSLabelPhonemizer : MachineLearningPhonemizer {
         protected USinger singer;
         //information used by HTS writer
         protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
@@ -473,7 +473,7 @@ namespace OpenUtau.Core {
         protected abstract HTSPhoneme[] CustomHTSPhonemeContext(HTSPhoneme[] htsPhonemes, Note[] notes);
 
 
-        protected void ProcessPart(Note[][] phrase) {
+        protected override void ProcessPart(Note[][] phrase) {
             tmpPath = Path.Join(PathManager.Inst.CachePath, $"lab-{HashPhraseGroups(phrase):x16}");
             htstmpPath = tmpPath + "_htstemp";
             fullScorePath = Path.Join(htstmpPath, $"full_score.lab");
