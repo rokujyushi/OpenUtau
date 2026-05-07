@@ -12,6 +12,8 @@ namespace OpenUtau.Core.Neutrino {
     public class Neutrino : HTSLabelPhonemizer {
         readonly string PhonemizerType = "NEUTRINO";
         string NeutrinoExe = string.Empty;
+        string Neutrino_ClientExe = string.Empty;
+        string NeutrinoServerExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
 
@@ -45,15 +47,14 @@ namespace OpenUtau.Core.Neutrino {
             }
             if (OS.IsWindows()) {
                 NeutrinoExe = Path.Join(basePath, @"bin", "NEUTRINO.exe");
-                NsfExe = Path.Join(basePath, @"bin", "NSF.exe");
-                WorldExe = Path.Join(basePath, @"bin", "WORLD.exe");
+                Neutrino_ClientExe = Path.Join(basePath, @"bin", "neutrino_client.exe");
+                NeutrinoServerExe = Path.Join(basePath, @"bin", "neutrino_server.exe");
             } else if (OS.IsMacOS() || OS.IsLinux()) {
                 NeutrinoExe = Path.Join(basePath, @"bin", "NEUTRINO");
-                NsfExe = Path.Join(basePath, @"bin", "NSF");
-                WorldExe = Path.Join(basePath, @"bin", "WORLD");
             } else {
                 throw new NotSupportedException("Platform not supported.");
             }
+            NeutrinoServerLauncher.EnsureStarted(NeutrinoServerExe);
         }
         protected IG2p LoadG2p() {
             var g2ps = new List<IG2p>();
@@ -135,6 +136,7 @@ namespace OpenUtau.Core.Neutrino {
                 var voicebankNameHash = $"{this.singer.voicebankNameHash:x16}";
                 string f0Path = Path.Join(htstmpPath, $"{voicebankNameHash}_tmp.f0");
                 string melspecPath = Path.Join(htstmpPath, $"{voicebankNameHash}_tmp.melspec");
+                string PhraseList = Path.Join(htstmpPath, $"{voicebankNameHash}_phraselist.txt");
                 string modelDir = this.singer.Location+"\\";
                 var attr = phrase[0][0].phonemeAttributes?.FirstOrDefault(attr => attr.index == 0) ?? default;
                 int toneShift = attr.toneShift;
@@ -148,8 +150,13 @@ namespace OpenUtau.Core.Neutrino {
                 //        gpuMode = -1;
                 //        break;
                 //}
-                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -a -p 1 -n 1 -k {toneShift} -o {numThreads} -m -t";
-                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -i {PhraseList} -a -k {toneShift} -d 3 -n 1 -p {numThreads} -m -t";
+                Log.Information($"NEUTRINO timing args: {ArgParam}");
+                if (File.Exists(Neutrino_ClientExe)) {
+                    ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                } else {
+                    ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                }
             }
         }
     }

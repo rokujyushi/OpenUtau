@@ -68,8 +68,11 @@ namespace OpenUtau.Core.Neutrino {
 
         protected NeutrinoSinger singer;
         string NeutrinoExe = string.Empty;
+        string Neutrino_ClientExe = string.Empty;
+        string NeutrinoServerExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
+        string Vocoder_ClientExe = string.Empty;
         int sampleRate = 48000;
         //information used by HTS writer
         protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
@@ -84,14 +87,12 @@ namespace OpenUtau.Core.Neutrino {
         protected int endTick;
         protected UTimeSignature sigStart;
         protected double bpmStart;
-        protected int barLenMsStart;
+        protected double headMs;
         protected int barLenTicksStart;
         protected UTimeSignature sigEnd;
         protected double bpmEnd;
-        protected int barLenMsEnd;
-        protected int barLenTicksEnd;
-        protected double headMs;
         protected double tailMs;
+        protected int barLenTicksEnd;
         protected string lang = "";
         protected int key = 0;
         protected int resolution = 480;
@@ -130,8 +131,11 @@ namespace OpenUtau.Core.Neutrino {
             LoadG2p();
             if (OS.IsWindows()) {
                 NeutrinoExe = Path.Join(basePath, @".\bin", "NEUTRINO.exe");
+                Neutrino_ClientExe = Path.Join(basePath, @".\bin", "neutrino_client.exe");
+                NeutrinoServerExe = Path.Join(basePath, @".\bin", "neutrino_server.exe");
                 NsfExe = Path.Join(basePath, @".\bin", "NSF.exe");
                 WorldExe = Path.Join(basePath, @".\bin", "WORLD.exe");
+                Vocoder_ClientExe = Path.Join(basePath, @".\bin", "vocoder_client.exe");
             } else if (OS.IsMacOS() || OS.IsLinux()) {
                 NeutrinoExe = Path.Join(basePath, @".\bin", "NEUTRINO");
                 NsfExe = Path.Join(basePath, @".\bin", "NSF");
@@ -139,6 +143,8 @@ namespace OpenUtau.Core.Neutrino {
             } else {
                 throw new NotSupportedException("Platform not supported.");
             }
+            NeutrinoServerLauncher.EnsureStarted(NeutrinoServerExe);
+            NeutrinoServerLauncher.EnsureStarted(Vocoder_ClientExe);
         }
 
         public void LoadDict(string path, Encoding encoding) {
@@ -630,6 +636,7 @@ namespace OpenUtau.Core.Neutrino {
                     if (flag1 != null) {
                         eng = flag1.Item1;
                     }
+                    string ArgParam = string.Empty;
                     if (eng.Equals(NeutrinoRenderType.NSF.ToString())) {
                         var flag2 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(NMOD));
                         string nsf = "ve";
@@ -645,16 +652,16 @@ namespace OpenUtau.Core.Neutrino {
                                 sampleRate = 24000;
                             }
                         }
-                        string ArgParam = string.Empty;
                         if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
                             ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                            if (File.Exists(Neutrino_ClientExe)) {
+                                ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                            } else {
                             ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                         }
                         if (phrase.phones[0].direct) {
                             double[] f0 = LoadFile(f0Path);
                             int totalFrames = f0.Length;
-                            var headMs = 0d;
-                            var tailMs = 0d;
                             int headFrames = (int)Math.Round(headMs / framePeriod);
                             int tailFrames = (int)Math.Round(tailMs / framePeriod);
                             double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
@@ -663,7 +670,11 @@ namespace OpenUtau.Core.Neutrino {
                         } else {
                             ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
                         }
+                            if (File.Exists(Vocoder_ClientExe)) {
+                                ProcessRunner.Run(Vocoder_ClientExe, ArgParam, Log.Logger);
+                            } else {
                         ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
+                            }
                         using (var waveStream = new WaveFileReader(wavPath)) {
                             result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
                             Wave.CorrectSampleScale(result.samples);
@@ -673,18 +684,23 @@ namespace OpenUtau.Core.Neutrino {
                             source.SetSamples(result.samples);
                             WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                         }
+                        }
                     } else {
                         if (!File.Exists(f0Path) || !File.Exists(mgcPath) || !File.Exists(bapPath)) {
-                            string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -n 1 -o {numThreads} -k {toneShift} -m -t";
+                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -n 1 -o {numThreads} -k {toneShift} -m -t";
+                            if (File.Exists(Neutrino_ClientExe)) {
+                                ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                            } else {
                             ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                         }
                         if (cancellation.IsCancellationRequested) {
                             return new RenderResult();
                         }
-                        if (!phrase.phones[0].direct) {
+                        if (!File.Exists(wavPath)) {
+                            if (phrase.phones[0].direct) {
                             float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
                             float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
-                            string ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
+                                ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
                             ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
 
                         } else {
@@ -721,6 +737,7 @@ namespace OpenUtau.Core.Neutrino {
                             source.SetSamples(result.samples);
                             WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                         }
+                    }
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
                     try {
