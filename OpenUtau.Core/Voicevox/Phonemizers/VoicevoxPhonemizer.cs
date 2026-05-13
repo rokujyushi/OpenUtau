@@ -13,11 +13,18 @@ namespace OpenUtau.Core.Voicevox {
         Dictionary<Note[], Phoneme[]> partResult = new Dictionary<Note[], Phoneme[]>();
 
         public override void SetSinger(USinger singer) {
-            this.singer = singer as VoicevoxSinger;
+            if (singer is VoicevoxSinger) {
+                this.singer = singer as VoicevoxSinger;
+            } else {
+                return;
+            }
         }
 
         public override void SetUp(Note[][] notes, UProject project, UTrack track) {
             partResult.Clear();
+            if (this.singer.voicevoxConfig == null) {
+                return;
+            }
             VoicevoxNote[] vNotes = new VoicevoxNote[notes.Length];
             for (int i = 0; i < notes.Length; i++) {
                 var currentLyric = notes[i][0].lyric.Normalize();

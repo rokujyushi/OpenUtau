@@ -33,6 +33,7 @@ namespace OpenUtau.Core.Voicevox {
         public override IList<UOto> Otos => otos;
 
         Voicebank voicebank;
+        public bool oneLoad = false;
         public VoicevoxConfig voicevoxConfig;
         List<string> errors = new List<string>();
         List<USubbank> subbanks = new List<USubbank>();
@@ -61,8 +62,15 @@ namespace OpenUtau.Core.Voicevox {
                 return;
             }
             try {
-                voicevoxConfig = VoicevoxConfig.Load(this);
                 voicebank.Reload();
+                try {
+                    if (!oneLoad) {
+                        voicevoxConfig = VoicevoxConfig.Load(this);
+                    }
+                } catch (Exception e) {
+                    Log.Error(e, $"Failed to load {voicebank.File}");
+                    oneLoad = true;
+                }
                 Load();
                 loaded = true;
             } catch (Exception e) {
