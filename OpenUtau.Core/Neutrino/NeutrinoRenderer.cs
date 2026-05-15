@@ -375,7 +375,7 @@ namespace OpenUtau.Core.Neutrino {
             public double startMs;
             public double endMs;
             public override string ToString() {
-                return $"{(long)Math.Round(startMs * 1000.0)} {(long)Math.Round(endMs * 1000.0)} {symbol}";
+                return $"{(long)Math.Round(startMs * 10000.0)} {(long)Math.Round(endMs * 10000.0)} {symbol}";
             }
         }
 
@@ -396,7 +396,8 @@ namespace OpenUtau.Core.Neutrino {
             var sigForPadStart = timeAxis.TimeSignatureAtTick(startTick - barLenTicksStart);
 
 
-            List<monoLabel> monoLabels = new List<monoLabel>();
+            List<monoLabel> monoLabels_ = new List<monoLabel>();
+            double phonemeDuration = 0;
 
             HTSNote PaddingNoteStart = new HTSNote(
                 symbols: new string[] { "pau" },
@@ -420,13 +421,12 @@ namespace OpenUtau.Core.Neutrino {
             var htsPhonemes = new List<HTSPhoneme>();
             htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteStart));
 
-            foreach (var phoneme in htsPhonemes) {
-                monoLabels.Add(new monoLabel() {
-                    symbol = phoneme.symbol,
-                    startMs = 0,
-                    endMs = headMs
-                });
-            }
+            monoLabels_.Add(new monoLabel() {
+                symbol = htsPhonemes[0].symbol,
+                startMs = phonemeDuration,
+                endMs = headMs
+            });
+            phonemeDuration += headMs;
 
             //Alignment
             var phonemesByNoteIndex = phrase.phones
@@ -440,11 +440,12 @@ namespace OpenUtau.Core.Neutrino {
                 var note = phrase.notes[noteIndex];
                 if (phonemesByNoteIndex.TryGetValue(noteIndex, out var phonemes)) {
                     foreach (var phone in phonemes) {
-                        monoLabels.Add(new monoLabel() {
+                        monoLabels_.Add(new monoLabel() {
                             symbol = phone.phoneme,
-                            startMs = phone.positionMs - phrase.positionMs + headMs,
-                            endMs = phone.endMs - phrase.positionMs + headMs
+                            startMs = phonemeDuration,
+                            endMs = phonemeDuration + phone.durationMs
                         });
+                        phonemeDuration += phone.durationMs;
                     }
 
                     lastBasePhonemes = phonemes;
@@ -457,11 +458,12 @@ namespace OpenUtau.Core.Neutrino {
                         var extensionStartMs = note.positionMs - phrase.positionMs + headMs;
                         var extensionEndMs = note.endMs - phrase.positionMs + headMs;
 
-                        monoLabels.Add(new monoLabel() {
+                        monoLabels_.Add(new monoLabel() {
                             symbol = extensionPhoneme.phoneme,
-                            startMs = extensionStartMs,
-                            endMs = extensionEndMs
+                            startMs = phonemeDuration,
+                            endMs = phonemeDuration + note.durationMs
                         });
+                        phonemeDuration += note.durationMs;
 
                         HTSNote htsNote = makeHtsNote(extensionPhoneme.phoneme, note, startTick, headMs);
                         tuples.Add(Tuple.Create(htsNote, noteIndex));
@@ -505,9 +507,9 @@ namespace OpenUtau.Core.Neutrino {
             htsNotes.Add(PaddingNoteEnd);
             htsPhonemes.AddRange(HTSNoteToPhonemes(PaddingNoteEnd));
 
-            monoLabels.Add(new monoLabel() {
+            monoLabels_.Add(new monoLabel() {
                 symbol = htsPhonemes[^1].symbol,
-                startMs = phrase.endMs - phrase.positionMs + headMs,
+                startMs = phonemeDuration,
                 endMs = sentenceDurMs
             });
 
@@ -531,7 +533,7 @@ namespace OpenUtau.Core.Neutrino {
 
             try {
                 File.WriteAllLines(fullScorePath, htsPhonemes.Select(x => x.dump()));
-                File.WriteAllLines(monoTimingPath, monoLabels.Select(x => x.ToString()));
+                File.WriteAllLines(monoTimingPath, monoLabels_.Select(x => x.ToString()));
             } catch (Exception e) {
                 Log.Error(e.ToString());
                 throw e;
@@ -560,7 +562,7 @@ namespace OpenUtau.Core.Neutrino {
                 using (FileStream fs = new FileStream(filePath, FileMode.Create, FileAccess.Write)) {
                     using (BinaryWriter writer = new BinaryWriter(fs)) {
                         foreach (double pitch in doubles) {
-                            writer.Write(pitch);
+                            writer.Write((float)pitch);
                         }
                     }
                 }
@@ -630,58 +632,58 @@ namespace OpenUtau.Core.Neutrino {
                     }
                     string ArgParam = string.Empty;
                     if (this.singer.singerVersion.StartsWith("v2.7")) {
-                    if (eng.Equals(NeutrinoRenderType.NSF.ToString())) {
+                        if (eng.Equals(NeutrinoRenderType.NSF.ToString())) {
                             var flag2 = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(NMOD));
                             string nsf = "vs";
-                        if (flag2 != null) {
-                            if (flag2.Item2 == 4) {
-                                nsf = NsfModel.va.ToString();
-                                sampleRate = 48000;
-                            } else if (flag2.Item2 == 3) {
-                                nsf = NsfModel.vs.ToString();
-                                sampleRate = 48000;
-                            } else if (flag2.Item2 == 2) {
-                                nsf = NsfModel.ve.ToString();
-                                sampleRate = 24000;
+                            if (flag2 != null) {
+                                if (flag2.Item2 == 4) {
+                                    nsf = NsfModel.va.ToString();
+                                    sampleRate = 48000;
+                                } else if (flag2.Item2 == 3) {
+                                    nsf = NsfModel.vs.ToString();
+                                    sampleRate = 48000;
+                                } else if (flag2.Item2 == 2) {
+                                    nsf = NsfModel.ve.ToString();
+                                    sampleRate = 24000;
+                                }
                             }
-                        }
-                        if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
-                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                            if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
                                 if (existNeutrinoClient) {
                                     ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
-                            } else {
-                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
-                            }
+                                } else {
+                                    ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                                }
                             }
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
                             }
                             if (!File.Exists(wavPath)) {
-                            if (phrase.phones[0].direct) {
+                                if (phrase.phones[0].direct) {
                                     ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
                                 } else {
-                                double[] f0 = LoadFile(f0Path);
+                                    double[] f0 = LoadFile(f0Path);
                                     double[] melspec = LoadFile(melspecPath);
-                                int totalFrames = f0.Length;
-                                int headFrames = (int)Math.Round(headMs / framePeriod);
-                                int tailFrames = (int)Math.Round(tailMs / framePeriod);
-                                double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
-                                SaveFile(editorf0Path, editorF0);
+                                    int totalFrames = f0.Length;
+                                    int headFrames = (int)Math.Round(headMs / framePeriod);
+                                    int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                                    double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                                    SaveFile(editorf0Path, editorF0);
 
                                     var volumeCurve = phrase.curves.FirstOrDefault(c => c.Item1 == NMEL);
                                     if (volumeCurve != null) {
                                         var editorMel = SampleCurve(phrase, volumeCurve.Item2, 0, framePeriod, totalFrames, headFrames, tailFrames, x => x * 0.01);
-                            }
+                                    }
                                     SaveFile(editorf0Path, editorF0);
                                     ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
                                 }
                                 if (File.Exists(VocoderClientExe)) {
                                     ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
-                            } else {
-                                ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
-                            }
-                            using (var waveStream = new WaveFileReader(wavPath)) {
-                                result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
+                                } else {
+                                    ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
+                                }
+                                using (var waveStream = new WaveFileReader(wavPath)) {
+                                    result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
                                 }
                                 Wave.CorrectSampleScale(result.samples);
                                 var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
@@ -690,27 +692,27 @@ namespace OpenUtau.Core.Neutrino {
                                 source.SetSamples(result.samples);
                                 WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                             }
-                    } else {
-                        if (!File.Exists(f0Path) || !File.Exists(mgcPath) || !File.Exists(bapPath)) {
+                        } else {
+                            if (!File.Exists(f0Path) || !File.Exists(mgcPath) || !File.Exists(bapPath)) {
                                 ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
                                 if (existNeutrinoClient) {
                                     ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
-                            } else {
-                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                                } else {
+                                    ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                                }
                             }
-                        }
-                        if (cancellation.IsCancellationRequested) {
-                            return new RenderResult();
-                        }
-                        if (!File.Exists(wavPath)) {
-                            if (phrase.phones[0].direct) {
-                                float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
-                                float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
-                                ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
+                            if (cancellation.IsCancellationRequested) {
+                                return new RenderResult();
+                            }
+                            if (!File.Exists(wavPath)) {
+                                if (phrase.phones[0].direct) {
+                                    float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
+                                    float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
+                                    ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
                                     if (File.Exists(VocoderClientExe)) {
                                         ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
                                     } else {
-                                ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
+                                        ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
                                     }
                                     using (var waveStream = new WaveFileReader(wavPath)) {
                                         result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
@@ -721,42 +723,42 @@ namespace OpenUtau.Core.Neutrino {
                                     var source = new WaveSource(0, 0, 0, 1);
                                     source.SetSamples(result.samples);
                                     WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
-                            } else {
-                                double[] f0 = LoadFile(f0Path);
-                                double[] mgc = LoadFile(mgcPath);
-                                double[] bap = LoadFile(bapPath);
-                                int totalFrames = f0.Length;
-                                int headFrames = (int)Math.Round(headMs / framePeriod);
-                                int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                                } else {
+                                    double[] f0 = LoadFile(f0Path);
+                                    double[] mgc = LoadFile(mgcPath);
+                                    double[] bap = LoadFile(bapPath);
+                                    int totalFrames = f0.Length;
+                                    int headFrames = (int)Math.Round(headMs / framePeriod);
+                                    int tailFrames = (int)Math.Round(tailMs / framePeriod);
 
-                                var editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
-                                var gender = SampleCurve(phrase, phrase.gender, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                                var tension = SampleCurve(phrase, phrase.tension, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                                var breathiness = SampleCurve(phrase, phrase.breathiness, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
-                                var voicing = SampleCurve(phrase, phrase.voicing, 1.0, framePeriod, totalFrames, headFrames, tailFrames, x => 0.01 * x);
+                                    var editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                                    var gender = SampleCurve(phrase, phrase.gender, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                                    var tension = SampleCurve(phrase, phrase.tension, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                                    var breathiness = SampleCurve(phrase, phrase.breathiness, 0.5, framePeriod, totalFrames, headFrames, tailFrames, x => 0.5 + 0.005 * x);
+                                    var voicing = SampleCurve(phrase, phrase.voicing, 1.0, framePeriod, totalFrames, headFrames, tailFrames, x => 0.01 * x);
 
-                                for (int i = 0; i < f0.Length; i++) {
-                                    if (f0[i] < 50) {
-                                        editorF0[i] = 0;
+                                    for (int i = 0; i < f0.Length; i++) {
+                                        if (f0[i] < 50) {
+                                            editorF0[i] = 0;
+                                        }
                                     }
-                                }
 
-                                var samples = Worldline.WorldSynthesis(
-                                    editorF0,
-                                    mgc, true, 60,
-                                    bap, true, 2048,
-                                    framePeriod, sampleRate,
-                                    gender, tension, breathiness, voicing);
-                                result.samples = samples.Select(d => (float)d).ToArray();
-                                Wave.CorrectSampleScale(result.samples);
-                                var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
-                                signal = NWaves.Operations.Operation.Resample(signal, 44100);
-                                result.samples = signal.Samples;
-                                var source = new WaveSource(0, 0, 0, 1);
-                                source.SetSamples(result.samples);
-                                WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
+                                    var samples = Worldline.WorldSynthesis(
+                                        editorF0,
+                                        mgc, true, 60,
+                                        bap, true, 2048,
+                                        framePeriod, sampleRate,
+                                        gender, tension, breathiness, voicing);
+                                    result.samples = samples.Select(d => (float)d).ToArray();
+                                    Wave.CorrectSampleScale(result.samples);
+                                    var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
+                                    signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                                    result.samples = signal.Samples;
+                                    var source = new WaveSource(0, 0, 0, 1);
+                                    source.SetSamples(result.samples);
+                                    WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
+                                }
                             }
-                        }
                         }
                     }else if (this.singer.singerVersion.StartsWith("v3.")) {
                         if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
@@ -769,7 +771,7 @@ namespace OpenUtau.Core.Neutrino {
                         }
                         if (cancellation.IsCancellationRequested) {
                             return new RenderResult();
-                    }
+                        }
                         if (!File.Exists(wavPath)) {
                             if (phrase.phones[0].direct) {
                                 ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir}  --skip-timing -f {toneShift} -m -t";
@@ -802,7 +804,7 @@ namespace OpenUtau.Core.Neutrino {
                         result.samples = new float[0];
                         return result;
                     }
-                    progress.Complete(phrase.phones.Length, progressInfo);
+                        progress.Complete(phrase.phones.Length, progressInfo);
                     try {
                         if (File.Exists(wavPath)) {
                             using (var waveStream = new WaveFileReader(wavPath)) {
