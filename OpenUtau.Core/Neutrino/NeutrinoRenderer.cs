@@ -21,6 +21,7 @@ namespace OpenUtau.Core.Neutrino {
     public class NeutrinoRenderer : IRenderer {
         const string NTYP = "ntyp";
         const string NMOD = "nmod";
+        const string NMEL = "nmel";
         const string SMOC = "smoc";
 
         enum NeutrinoRenderType {
@@ -660,14 +661,16 @@ namespace OpenUtau.Core.Neutrino {
                                     ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
                                 } else {
                                 double[] f0 = LoadFile(f0Path);
+                                    double[] melspec = LoadFile(melspecPath);
                                 int totalFrames = f0.Length;
                                 int headFrames = (int)Math.Round(headMs / framePeriod);
                                 int tailFrames = (int)Math.Round(tailMs / framePeriod);
                                 double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                                 SaveFile(editorf0Path, editorF0);
-                                ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
-                            } else {
-                                ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
+
+                                    var volumeCurve = phrase.curves.FirstOrDefault(c => c.Item1 == NMEL);
+                                    if (volumeCurve != null) {
+                                        var editorMel = SampleCurve(phrase, volumeCurve.Item2, 0, framePeriod, totalFrames, headFrames, tailFrames, x => x * 0.01);
                             }
                                     SaveFile(editorf0Path, editorF0);
                                     ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
@@ -854,21 +857,21 @@ namespace OpenUtau.Core.Neutrino {
                 //    isFlag=false,
                 //},
                 ////engine
-                //new UExpressionDescriptor {
-                //    name = "NEUTRINO engine type (~2.x)",
-                //    abbr = NTYP,
-                //    type = UExpressionType.Options,
-                //    options = Enum.GetNames<NeutrinoRenderType>(),
-                //    isFlag = false
-                //},
+                new UExpressionDescriptor {
+                    name = "NEUTRINO engine type (~2.x)",
+                    abbr = NTYP,
+                    type = UExpressionType.Options,
+                    options = Enum.GetNames<NeutrinoRenderType>(),
+                    isFlag = false
+                },
                 ////engine mode
-                //new UExpressionDescriptor {
-                //    name = "NEUTRINO engine mode (~2.x)",
-                //    abbr = NMOD,
-                //    type = UExpressionType.Options,
-                //    options = Enum.GetNames<NeutrinoRenderMode>(),
-                //    isFlag = false
-                //},
+                new UExpressionDescriptor {
+                    name = "NEUTRINO engine mode (~2.x)",
+                    abbr = NMOD,
+                    type = UExpressionType.Options,
+                    options = Enum.GetNames<NeutrinoRenderMode>(),
+                    isFlag = false
+                },
                 //expressiveness
                 new UExpressionDescriptor {
                     name = "pitch smoothened (curve)",
