@@ -622,15 +622,16 @@ namespace OpenUtau.Core.Neutrino {
                     if (!File.Exists(fullScorePath) && !File.Exists(monoTimingPath)) {
                         ProcessPart(phrase);
                     }
-                    var flag1 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(NTYP));
+                    var flag1 = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(NTYP));
                     string eng = string.Empty;
                     if (flag1 != null) {
                         eng = flag1.Item1;
                     }
                     string ArgParam = string.Empty;
+                    if (this.singer.singerVersion.StartsWith("v2.7")) {
                     if (eng.Equals(NeutrinoRenderType.NSF.ToString())) {
-                        var flag2 = phrase.phones[0].flags.FirstOrDefault(f => f.Item1.Equals(NMOD));
-                        string nsf = "ve";
+                            var flag2 = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(NMOD));
+                            string nsf = "vs";
                         if (flag2 != null) {
                             if (flag2.Item2 == 4) {
                                 nsf = NsfModel.va.ToString();
@@ -753,6 +754,50 @@ namespace OpenUtau.Core.Neutrino {
                                 WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                             }
                         }
+                        }
+                    }else if (this.singer.singerVersion.StartsWith("v3.")) {
+                        if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
+                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                            if (existNeutrinoClient) {
+                                ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
+                            } else {
+                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                            }
+                        }
+                        if (cancellation.IsCancellationRequested) {
+                            return new RenderResult();
+                    }
+                        if (!File.Exists(wavPath)) {
+                            if (phrase.phones[0].direct) {
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir}  --skip-timing -f {toneShift} -m -t";
+                            } else {
+                                double[] f0 = LoadFile(f0Path);
+                                int totalFrames = f0.Length;
+                                int headFrames = (int)Math.Round(headMs / framePeriod);
+                                int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                                double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                                SaveFile(editorf0Path, editorF0);
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {editorf0Path} {melspecPath} {modelDir} --skip-timing -f {toneShift} -m -t";
+                            }
+                            if (existNeutrinoClient) {
+                                ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
+                            } else {
+                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                            }
+                            using (var waveStream = new WaveFileReader(wavPath)) {
+                                result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
+                            }
+                            Wave.CorrectSampleScale(result.samples);
+                            var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
+                            signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                            var source = new WaveSource(0, 0, 0, 1);
+                            source.SetSamples(result.samples);
+                            WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
+                        }
+                    } else {
+                        Log.Error($"Unsupported NEUTRINO version: {this.singer.singerVersion}");
+                        result.samples = new float[0];
+                        return result;
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
                     try {

@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using K4os.Hash.xxHash;
 using OpenUtau.Classic;
 using OpenUtau.Core.Ustx;
+using OpenUtau.Core.Util;
 using Serilog;
 
 namespace OpenUtau.Core.Neutrino {
@@ -45,6 +45,7 @@ namespace OpenUtau.Core.Neutrino {
 
         public byte[] avatarData;
         public ulong voicebankNameHash;
+        public string singerVersion = string.Empty;
 
         public NeutrinoSinger(Voicebank voicebank) {
             this.voicebank = voicebank;
@@ -77,6 +78,16 @@ namespace OpenUtau.Core.Neutrino {
             table.Clear();
             otos.Clear();
             subbanks.Clear();
+
+            string infoPath = Path.Join(Location, "info.toml");
+            if (File.Exists(infoPath)) {
+                var info = TomlData.Load(infoPath);
+                info.TryGetValue("acoustic", "version", out object? version);
+                if (version != null) {
+                    singerVersion = version.ToString() ?? string.Empty;
+                }
+            }
+
             if (voicebank.Subbanks == null || voicebank.Subbanks.Count == 0 ||
                 voicebank.Subbanks.Count == 1 && string.IsNullOrEmpty(voicebank.Subbanks[0].Color)) {
                 subbanks.Add(new USubbank(new Subbank() {

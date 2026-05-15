@@ -132,11 +132,14 @@ namespace OpenUtau.Core.Neutrino {
         }
 
         protected override void SendScore(Note[][] phrase) {
+            if (this.singer.singerVersion == null) {
+                               return;
+            }
             if (File.Exists(fullScorePath) && !File.Exists(monoTimingPath)) {
                 var voicebankNameHash = $"{this.singer.voicebankNameHash:x16}";
                 string f0Path = Path.Join(htstmpPath, $"{voicebankNameHash}_tmp.f0");
                 string melspecPath = Path.Join(htstmpPath, $"{voicebankNameHash}_tmp.melspec");
-                string PhraseList = Path.Join(htstmpPath, $"{voicebankNameHash}_phraselist.txt");
+                //string PhraseList = Path.Join(htstmpPath, $"{voicebankNameHash}_phraselist.txt");
                 string modelDir = this.singer.Location+"\\";
                 var attr = phrase[0][0].phonemeAttributes?.FirstOrDefault(attr => attr.index == 0) ?? default;
                 int toneShift = attr.toneShift;
@@ -150,7 +153,16 @@ namespace OpenUtau.Core.Neutrino {
                 //        gpuMode = -1;
                 //        break;
                 //}
-                string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -i {PhraseList} -a -k {toneShift} -d 3 -n 1 -p {numThreads} -m -t";
+                string ArgParam = string.Empty;
+                if (this.singer.singerVersion.StartsWith("v2.7")) {
+                    ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -a -k {toneShift} -d 3 -n 1 -p {numThreads} -m -t";
+                } else if (this.singer.singerVersion.StartsWith("v3.")) {
+                    //TODO: -S support model
+                    ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} --skip-f0 --skip-melspec --skip-wav -f {toneShift} -m -t";
+                } else {
+                    Log.Error($"Unsupported NEUTRINO version: {this.singer.singerVersion}");
+                    return;
+                }
                 Log.Information($"NEUTRINO timing args: {ArgParam}");
                 if (File.Exists(NeutrinoClientExe)) {
                     ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
