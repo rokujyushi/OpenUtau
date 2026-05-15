@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -9,23 +10,28 @@ using Serilog;
 
 namespace OpenUtau.Core.Neutrino {
     static class NeutrinoServerLauncher {
-        const int ServerPort = 12345;
         static readonly object lockObj = new object();
-        static Process? serverProcess;
+        static readonly Dictionary<string, Process> serverProcesses =
+            new Dictionary<string, Process>(StringComparer.OrdinalIgnoreCase);
 
-        public static void EnsureStarted(string serverExe) {
+        public static void EnsureStarted(string serverExe, int? serverPort = 12345, string host = "127.0.0.1") {
             if (string.IsNullOrEmpty(serverExe) || !File.Exists(serverExe)) {
                 return;
             }
 
+            serverExe = Path.GetFullPath(serverExe);
             var serverName = Path.GetFileNameWithoutExtension(serverExe);
-            if (Process.GetProcessesByName(serverName).Any() || IsServerReady()) {
-                Log.Information("NEUTRINO server already running: {ServerExe}", serverExe);
+            if (Process.GetProcessesByName(serverName).Any() || IsServerReady(host, serverPort)) {
+                Log.Information("Background server already running: {ServerExe}", serverExe);
                 return;
             }
 
             lock (lockObj) {
-                if (serverProcess != null && !serverProcess.HasExited) {
+                if (serverProcesses.TryGetValue(serverExe, out var runningProcess) &&
+                        !runningProcess.HasExited) {
+                    return;
+                }
+                if (Process.GetProcessesByName(serverName).Any() || IsServerReady(host, serverPort)) {
                     return;
                 }
 
@@ -37,29 +43,36 @@ namespace OpenUtau.Core.Neutrino {
                 startedProcess.EnableRaisingEvents = true;
                 startedProcess.Exited += (_, _) => {
                     lock (lockObj) {
-                        if (ReferenceEquals(serverProcess, startedProcess)) {
-                            serverProcess = null;
+                        if (serverProcesses.TryGetValue(serverExe, out var currentProcess) &&
+                                ReferenceEquals(currentProcess, startedProcess)) {
+                            serverProcesses.Remove(serverExe);
                         }
                     }
                 };
-                serverProcess = startedProcess;
-                WaitForServerReady();
-                Log.Information("Started NEUTRINO server in background: {ServerExe}", serverExe);
+                serverProcesses[serverExe] = startedProcess;
+                WaitForServerReady(host, serverPort);
+                Log.Information("Started background server: {ServerExe}", serverExe);
             }
         }
 
-        static bool IsServerReady() {
+        static bool IsServerReady(string host, int? serverPort) {
+            if (!serverPort.HasValue) {
+                return false;
+            }
             try {
                 using var client = new TcpClient();
-                return client.ConnectAsync("127.0.0.1", ServerPort).Wait(50);
+                return client.ConnectAsync(host, serverPort.Value).Wait(50);
             } catch {
                 return false;
             }
         }
 
-        static void WaitForServerReady() {
+        static void WaitForServerReady(string host, int? serverPort) {
+            if (!serverPort.HasValue) {
+                return;
+            }
             for (int i = 0; i < 50; i++) {
-                if (IsServerReady()) {
+                if (IsServerReady(host, serverPort)) {
                     return;
                 }
                 Thread.Sleep(100);

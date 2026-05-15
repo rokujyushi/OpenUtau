@@ -68,11 +68,13 @@ namespace OpenUtau.Core.Neutrino {
 
         protected NeutrinoSinger singer;
         string NeutrinoExe = string.Empty;
-        string Neutrino_ClientExe = string.Empty;
+        string NeutrinoClientExe = string.Empty;
         string NeutrinoServerExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
-        string Vocoder_ClientExe = string.Empty;
+        string VocoderClientExe = string.Empty;
+        string VocoderServerExe = string.Empty;
+        bool existNeutrinoClient = false;
         int sampleRate = 48000;
         //information used by HTS writer
         protected Dictionary<string, string[]> phoneDict = new Dictionary<string, string[]>();
@@ -131,11 +133,12 @@ namespace OpenUtau.Core.Neutrino {
             LoadG2p();
             if (OS.IsWindows()) {
                 NeutrinoExe = Path.Join(basePath, @".\bin", "NEUTRINO.exe");
-                Neutrino_ClientExe = Path.Join(basePath, @".\bin", "neutrino_client.exe");
+                NeutrinoClientExe = Path.Join(basePath, @".\bin", "neutrino_client.exe");
                 NeutrinoServerExe = Path.Join(basePath, @".\bin", "neutrino_server.exe");
                 NsfExe = Path.Join(basePath, @".\bin", "NSF.exe");
                 WorldExe = Path.Join(basePath, @".\bin", "WORLD.exe");
-                Vocoder_ClientExe = Path.Join(basePath, @".\bin", "vocoder_client.exe");
+                VocoderClientExe = Path.Join(basePath, @".\bin", "vocoder_client.exe");
+                VocoderServerExe = Path.Join(basePath, @".\bin", "vocoder_server.exe");
             } else if (OS.IsMacOS() || OS.IsLinux()) {
                 NeutrinoExe = Path.Join(basePath, @".\bin", "NEUTRINO");
                 NsfExe = Path.Join(basePath, @".\bin", "NSF");
@@ -143,8 +146,9 @@ namespace OpenUtau.Core.Neutrino {
             } else {
                 throw new NotSupportedException("Platform not supported.");
             }
+            existNeutrinoClient = File.Exists(NeutrinoClientExe);
             NeutrinoServerLauncher.EnsureStarted(NeutrinoServerExe);
-            NeutrinoServerLauncher.EnsureStarted(Vocoder_ClientExe);
+            NeutrinoServerLauncher.EnsureStarted(VocoderServerExe, 23456);
         }
 
         public void LoadDict(string path, Encoding encoding) {
@@ -641,12 +645,19 @@ namespace OpenUtau.Core.Neutrino {
                         }
                         if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
                             ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
-                            if (File.Exists(Neutrino_ClientExe)) {
-                                ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                                if (existNeutrinoClient) {
+                                    ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
                             } else {
                                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                             }
+                            }
+                            if (cancellation.IsCancellationRequested) {
+                                return new RenderResult();
+                            }
+                            if (!File.Exists(wavPath)) {
                             if (phrase.phones[0].direct) {
+                                    ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
+                                } else {
                                 double[] f0 = LoadFile(f0Path);
                                 int totalFrames = f0.Length;
                                 int headFrames = (int)Math.Round(headMs / framePeriod);
@@ -657,13 +668,17 @@ namespace OpenUtau.Core.Neutrino {
                             } else {
                                 ArgParam = $"{f0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{sampleRate / 1000} -f {toneShift} -m -t";
                             }
-                            if (File.Exists(Vocoder_ClientExe)) {
-                                ProcessRunner.Run(Vocoder_ClientExe, ArgParam, Log.Logger);
+                                    SaveFile(editorf0Path, editorF0);
+                                    ArgParam = $"{editorf0Path} {melspecPath} {modelDir}{nsf}.bin {wavPath} -l {monoTimingPath} -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
+                                }
+                                if (File.Exists(VocoderClientExe)) {
+                                    ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
                             } else {
                                 ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
                             }
                             using (var waveStream = new WaveFileReader(wavPath)) {
                                 result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
+                                }
                                 Wave.CorrectSampleScale(result.samples);
                                 var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
                                 signal = NWaves.Operations.Operation.Resample(signal, 44100);
@@ -671,12 +686,11 @@ namespace OpenUtau.Core.Neutrino {
                                 source.SetSamples(result.samples);
                                 WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                             }
-                        }
                     } else {
                         if (!File.Exists(f0Path) || !File.Exists(mgcPath) || !File.Exists(bapPath)) {
-                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -n 1 -o {numThreads} -k {toneShift} -m -t";
-                            if (File.Exists(Neutrino_ClientExe)) {
-                                ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -w {mgcPath} {bapPath} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                                if (existNeutrinoClient) {
+                                    ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
                             } else {
                                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                             }
@@ -689,8 +703,20 @@ namespace OpenUtau.Core.Neutrino {
                                 float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
                                 float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
                                 ArgParam = $"{f0Path} {mgcPath} {bapPath} {wavPath} -n 1 -m {gender} -b {breathiness} -t";
+                                    if (File.Exists(VocoderClientExe)) {
+                                        ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
+                                    } else {
                                 ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
-
+                                    }
+                                    using (var waveStream = new WaveFileReader(wavPath)) {
+                                        result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
+                                    }
+                                    Wave.CorrectSampleScale(result.samples);
+                                    var signal = new NWaves.Signals.DiscreteSignal(sampleRate, result.samples);
+                                    signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                                    var source = new WaveSource(0, 0, 0, 1);
+                                    source.SetSamples(result.samples);
+                                    WaveFileWriter.CreateWaveFile16(wavPath, new ExportAdapter(source).ToMono(1, 0));
                             } else {
                                 double[] f0 = LoadFile(f0Path);
                                 double[] mgc = LoadFile(mgcPath);

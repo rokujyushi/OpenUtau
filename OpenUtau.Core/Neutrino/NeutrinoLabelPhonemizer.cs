@@ -12,7 +12,7 @@ namespace OpenUtau.Core.Neutrino {
     public class Neutrino : HTSLabelPhonemizer {
         readonly string PhonemizerType = "NEUTRINO";
         string NeutrinoExe = string.Empty;
-        string Neutrino_ClientExe = string.Empty;
+        string NeutrinoClientExe = string.Empty;
         string NeutrinoServerExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
@@ -47,7 +47,7 @@ namespace OpenUtau.Core.Neutrino {
             }
             if (OS.IsWindows()) {
                 NeutrinoExe = Path.Join(basePath, @"bin", "NEUTRINO.exe");
-                Neutrino_ClientExe = Path.Join(basePath, @"bin", "neutrino_client.exe");
+                NeutrinoClientExe = Path.Join(basePath, @"bin", "neutrino_client.exe");
                 NeutrinoServerExe = Path.Join(basePath, @"bin", "neutrino_server.exe");
             } else if (OS.IsMacOS() || OS.IsLinux()) {
                 NeutrinoExe = Path.Join(basePath, @"bin", "NEUTRINO");
@@ -152,8 +152,8 @@ namespace OpenUtau.Core.Neutrino {
                 //}
                 string ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -i {PhraseList} -a -k {toneShift} -d 3 -n 1 -p {numThreads} -m -t";
                 Log.Information($"NEUTRINO timing args: {ArgParam}");
-                if (File.Exists(Neutrino_ClientExe)) {
-                    ProcessRunner.Run(Neutrino_ClientExe, ArgParam, Log.Logger);
+                if (File.Exists(NeutrinoClientExe)) {
+                    ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
                 } else {
                     ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
                 }
