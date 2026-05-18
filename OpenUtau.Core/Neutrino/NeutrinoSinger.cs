@@ -86,6 +86,10 @@ namespace OpenUtau.Core.Neutrino {
                 if (version != null) {
                     singerVersion = version.ToString() ?? string.Empty;
                 }
+                info.TryGetValue("", "version", out object? version_);
+                if (version_ != null) {
+                    singerVersion = version_.ToString() ?? string.Empty;
+                }
             }
 
             if (voicebank.Subbanks == null || voicebank.Subbanks.Count == 0 ||
@@ -102,6 +106,13 @@ namespace OpenUtau.Core.Neutrino {
 
             try {
                 string basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO");
+                if (!Directory.Exists(basePath)) {
+                    if (singerVersion.StartsWith("v2.7")) {
+                        basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO_v27");
+                    } else if (singerVersion.StartsWith("v3.")) {
+                        basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO_v3");
+                    }
+                }
                 var tablePath = Path.Join(Path.Join(basePath, @".\settings\dic"), "japanese.utf_8.table");
                 foreach (var line in File.ReadAllLines(tablePath)) {
                     if (line.Contains("#")) {

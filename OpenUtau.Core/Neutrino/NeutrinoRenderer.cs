@@ -80,6 +80,13 @@ namespace OpenUtau.Core.Neutrino {
             string confPath = "japanese.utf_8.conf";
             tablePath = "japanese.utf_8.table";
             string basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO");
+            if (!Directory.Exists(basePath)) {
+                if (singer.singerVersion.StartsWith("v2.7")) {
+                    basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO_v27");
+                } else if (singer.singerVersion.StartsWith("v3.")) {
+                    basePath = Path.Join(PathManager.Inst.DependencyPath, "NEUTRINO_v3");
+                }
+            }
             //Load Dictionary
             try {
                 phoneDict.Clear();
@@ -316,9 +323,10 @@ namespace OpenUtau.Core.Neutrino {
                                 }
                             }
                         }
-                    }else if (this.singer.singerVersion.StartsWith("v3.")) {
-                        if (!File.Exists(f0Path) || !File.Exists(melspecPath)) {
-                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir} -s -n 1 -o {numThreads} -k {toneShift} -m -t";
+                    } else if (this.singer.singerVersion.StartsWith("v3.")) {
+                        // F0ファイル生成
+                        if (!File.Exists(f0Path)) {
+                            ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {wavPath} {modelDir} --skip-timing --skip-melspec --skip-wav -f {toneShift} -m -t";
                             if (existNeutrinoClient) {
                                 ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
                             } else {
@@ -328,17 +336,36 @@ namespace OpenUtau.Core.Neutrino {
                         if (cancellation.IsCancellationRequested) {
                             return new RenderResult();
                         }
-                        if (!File.Exists(wavPath)) {
+                        //メルスペクトグラムファイル生成
+                        if (File.Exists(f0Path) && !File.Exists(melspecPath)) {
                             if (phrase.phones[0].direct) {
-                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {modelDir}  --skip-timing -f {toneShift} -m -t";
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {wavPath} {modelDir} --skip-timing --skip-f0 --skip-wav -f {toneShift} -m -t";
                             } else {
                                 double[] f0 = LoadFile(f0Path);
                                 int totalFrames = f0.Length;
-                                int headFrames = (int)Math.Round(headMs / framePeriod);
-                                int tailFrames = (int)Math.Round(tailMs / framePeriod);
-                                double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
+                                int headFrames = (int)Math.Ceiling(headMs / 1000.0 * 99.84);
+                                int tailFrames = (int)Math.Floor(tailMs / 1000.0 * 99.84);
+                                var editorF0 = SampleCurve(phrase, phrase.pitches, 0, 9.984, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                                 SaveFile(editorf0Path, editorF0);
-                                ArgParam = $"{fullScorePath} {monoTimingPath} {editorf0Path} {melspecPath} {modelDir} --skip-timing -f {toneShift} -m -t";
+                                // F0の編集とメルスペクトグラムの生成はセット
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {editorf0Path} {melspecPath} {wavPath} {modelDir} --skip-timing --skip-f0 --skip-wav -f {toneShift} -m -t";
+                            }
+                            if (existNeutrinoClient) {
+                                ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
+                            } else {
+                                ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                            }
+                        }
+                        if (cancellation.IsCancellationRequested) {
+                            return new RenderResult();
+                        }
+                        //音声ファイル生成
+                        if (!File.Exists(wavPath) && File.Exists(f0Path) && File.Exists(melspecPath)) {
+                            if (phrase.phones[0].direct) {
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {f0Path} {melspecPath} {wavPath} {modelDir} --skip-timing --skip-f0 --skip-melspec -f {toneShift} -m -t";
+                            } else {
+                                // TODO:メルスペクトグラムの編集
+                                ArgParam = $"{fullScorePath} {monoTimingPath} {editorf0Path} {melspecPath} {wavPath} {modelDir} --skip-timing --skip-f0 --skip-melspec -f {toneShift} -m -t";
                             }
                             if (existNeutrinoClient) {
                                 ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
@@ -360,7 +387,7 @@ namespace OpenUtau.Core.Neutrino {
                         result.samples = new float[0];
                         return result;
                     }
-                        progress.Complete(phrase.phones.Length, progressInfo);
+                    progress.Complete(phrase.phones.Length, progressInfo);
                     try {
                         if (File.Exists(wavPath)) {
                             using (var waveStream = new WaveFileReader(wavPath)) {
@@ -458,8 +485,15 @@ namespace OpenUtau.Core.Neutrino {
                 double[] f0 = LoadFile(f0Path);
 
                 int totalFrames = f0.Length;
-                int headFrames = (int)Math.Round(headMs / framePeriod);
-                int tailFrames = (int)Math.Round(tailMs / framePeriod);
+                int headFrames = 0;
+                int tailFrames = 0;
+                if (this.singer.singerVersion.StartsWith("v3.")) {
+                    headFrames = (int)Math.Round(headMs / 1000.0 * 99.84);
+                    tailFrames = (int)Math.Round(tailMs / 1000.0 * 99.84);
+                } else {
+                    headFrames = (int)Math.Round(headMs / framePeriod);
+                    tailFrames = (int)Math.Round(tailMs / framePeriod);
+                }
                 var exprCurve = phrase.curves.FirstOrDefault(curve => curve.Item1.Equals(SMOC));
                 if (exprCurve != null) {
 
@@ -476,7 +510,11 @@ namespace OpenUtau.Core.Neutrino {
                 var layout = Layout(phrase);
                 var t = layout.positionMs - layout.leadingMs;
                 for (int i = 0; i < result.tones.Length; i++) {
-                    t += framePeriod;
+                    if (this.singer.singerVersion.StartsWith("v3.")) {
+                        t += 10;
+                    } else {
+                        t += framePeriod;
+                    }
                     result.ticks[i] = phrase.timeAxis.MsPosToTickPos(t) - phrase.position;
                 }
             } catch {
