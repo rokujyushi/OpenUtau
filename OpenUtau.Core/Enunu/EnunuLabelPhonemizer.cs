@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using OpenUtau.Api;
+using OpenUtau.Core.Hts;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 

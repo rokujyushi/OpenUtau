@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using OpenUtau.Api;
+using OpenUtau.Core.Hts;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using Serilog;
@@ -10,14 +11,13 @@ using Serilog;
 namespace OpenUtau.Core.Neutrino {
     [Phonemizer("Neutrino Label Phonemizer", "NEUTRINO")]
     public class Neutrino : HTSLabelPhonemizer {
-        readonly string PhonemizerType = "NEUTRINO";
         string NeutrinoExe = string.Empty;
         string NeutrinoClientExe = string.Empty;
         string NeutrinoServerExe = string.Empty;
         string NsfExe = string.Empty;
         string WorldExe = string.Empty;
 
-        protected NeutrinoSinger singer;
+        protected new NeutrinoSinger singer;
 
         List<string> macronLyrics = new List<string>();
 

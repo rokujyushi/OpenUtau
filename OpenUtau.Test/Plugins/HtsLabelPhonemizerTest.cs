@@ -8,6 +8,7 @@ using OpenUtau.Api;
 using OpenUtau.Classic;
 using OpenUtau.Core;
 using OpenUtau.Core.Format;
+using OpenUtau.Core.Hts;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using OpenUtau.Core.Util.nnmnkwii.frontend;
