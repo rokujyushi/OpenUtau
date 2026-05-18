@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,16 +59,7 @@ namespace OpenUtau.Core.Hts {
         protected string monoTimingPath = string.Empty;
         protected string fullTimingPath = string.Empty;
 
-        public virtual void SetUp() {
-            phoneDict.Clear();
-            lang = "JPN";//TODO: use singer.language
-            // Lyrics often handled in OpenUtau
-            phoneDict.Add("R", new string[] { "pau" });
-            phoneDict.Add("-", new string[] { "pau" });
-            phoneDict.Add("SP", new string[] { "pau" });
-            phoneDict.Add("AP", new string[] { "br" });
-            g2p = LoadG2p();
-        }
+        public abstract void SetUp();
 
         protected virtual void LoadDict(string path, Encoding encoding) {
             if (path.EndsWith(".conf")) {
@@ -156,7 +148,7 @@ namespace OpenUtau.Core.Hts {
                 if (existSymbol) {
                     splitFlag = false;
                     continue;
-                } else if (existSymbol && !splitFlag) {
+                } else if (!existSymbol && !splitFlag) {
                     splitFlag = true;
                     continue;
                 }
@@ -383,11 +375,12 @@ namespace OpenUtau.Core.Hts {
                     continue;
                 }
             }
+            int noteCount = tuples.Count;
             for (int i = 0; i < tuples.Count; i++) {
                 var htsNote = tuples[i].Item1;
                 htsNotes.Add(htsNote);
-                htsNote.index = i;
-                htsNote.indexBackwards = htsNotes.Count - i;
+                htsNote.index = i + 1;
+                htsNote.indexBackwards = noteCount - i;
                 htsNote.sentenceDurMs = sentenceDurMs;
                 htsNote.sentenceDurTicks = sentenceDurTicks;
                 var tmpPhonemes = HTSNoteToPhonemes(htsNote);
