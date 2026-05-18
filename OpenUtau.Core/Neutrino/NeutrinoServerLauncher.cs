@@ -13,6 +13,9 @@ namespace OpenUtau.Core.Neutrino {
         static readonly object lockObj = new object();
         static readonly Dictionary<string, Process> serverProcesses =
             new Dictionary<string, Process>(StringComparer.OrdinalIgnoreCase);
+        static NeutrinoServerLauncher() {
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => StopAll();
+        }
 
         public static void EnsureStarted(string serverExe, int? serverPort = 12345, string host = "127.0.0.1") {
             if (string.IsNullOrEmpty(serverExe) || !File.Exists(serverExe)) {
@@ -52,6 +55,28 @@ namespace OpenUtau.Core.Neutrino {
                 serverProcesses[serverExe] = startedProcess;
                 WaitForServerReady(host, serverPort);
                 Log.Information("Started background server: {ServerExe}", serverExe);
+            }
+        }
+
+        static void StopAll() {
+            Process[] processes;
+            lock (lockObj) {
+                processes = serverProcesses.Values.ToArray();
+                serverProcesses.Clear();
+            }
+
+            foreach (var process in processes) {
+                try {
+                    if (process.HasExited) {
+                        process.Dispose();
+                        continue;
+                    }
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(3000);
+                    process.Dispose();
+                } catch (Exception e) {
+                    Log.Warning(e, "Failed to stop background server process.");
+                }
             }
         }
 

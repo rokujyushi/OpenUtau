@@ -24,7 +24,7 @@ namespace OpenUtau.Core.Util {
             var threadId = Thread.CurrentThread.ManagedThreadId;
             using (var proc = new Process()) {
                 proc.StartInfo = new ProcessStartInfo(file, args) {
-                    Environment = {{"LANG", "ja_JP.utf8"}},
+                    Environment = { { "LANG", "ja_JP.utf8" } },
                     UseShellExecute = false,
                     RedirectStandardOutput = DebugSwitch,
                     RedirectStandardError = true,
@@ -32,11 +32,11 @@ namespace OpenUtau.Core.Util {
                     WorkingDirectory = workDir,
                 };
                 if (DebugSwitch) {
-                proc.OutputDataReceived += (o, e) => {
-                    if (!string.IsNullOrEmpty(e.Data)) {
-                        logger.Information($"ProcessRunner >>> [thread-{threadId}] {e.Data}");
-                    }
-                };
+                    proc.OutputDataReceived += (o, e) => {
+                        if (!string.IsNullOrEmpty(e.Data)) {
+                            logger.Information($"ProcessRunner >>> [thread-{threadId}] {e.Data}");
+                        }
+                    };
                 }
                 proc.ErrorDataReceived += (o, e) => {
                     if (!string.IsNullOrEmpty(e.Data)) {
@@ -45,7 +45,7 @@ namespace OpenUtau.Core.Util {
                 };
                 proc.Start();
                 if (DebugSwitch) {
-                proc.BeginOutputReadLine();
+                    proc.BeginOutputReadLine();
                 }
                 proc.BeginErrorReadLine();
                 if (timeoutMs <= 0) {
@@ -73,25 +73,29 @@ namespace OpenUtau.Core.Util {
             var threadId = Thread.CurrentThread.ManagedThreadId;
             var proc = new Process();
             proc.StartInfo = new ProcessStartInfo(file, args) {
-                Environment = {{"LANG", GetLanguageEnvironmentValue()}},
+                Environment = { { "LANG", GetLanguageEnvironmentValue() } },
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                CreateNoWindow = true,
+                CreateNoWindow = false,
                 WorkingDirectory = workDir,
             };
-            proc.OutputDataReceived += (o, e) => {
-                if (!string.IsNullOrEmpty(e.Data)) {
-                    logger.Information($"ProcessRunner >>> [thread-{threadId}] {e.Data}");
-                }
-            };
+            if (DebugSwitch) {
+                proc.OutputDataReceived += (o, e) => {
+                    if (!string.IsNullOrEmpty(e.Data)) {
+                        logger.Information($"ProcessRunner >>> [thread-{threadId}] {e.Data}");
+                    }
+                };
+            }
             proc.ErrorDataReceived += (o, e) => {
                 if (!string.IsNullOrEmpty(e.Data)) {
                     logger.Error($"ProcessRunner >>> [thread-{threadId}] {e.Data}");
                 }
             };
             proc.Start();
-            proc.BeginOutputReadLine();
+            if (DebugSwitch) {
+                proc.BeginOutputReadLine();
+            }
             proc.BeginErrorReadLine();
             proc.EnableRaisingEvents = true;
             proc.Exited += (_, _) => {
