@@ -12,14 +12,13 @@ namespace OpenUtau.Core.Render {
         public const string WORLDLINE_R = "WORLDLINE-R";
         public const string WORLDLINE_R2 = "WORLDLINE-R2";
         public const string ENUNU = "ENUNU";
-        public const string ENUNULAB = "ENUNU-LAB";
         public const string VOGEN = "VOGEN";
         public const string DIFFSINGER = "DIFFSINGER";
         public const string VOICEVOX = "VOICEVOX";
         public const string NEUTRINO = "NEUTRINO";
 
         static readonly string[] classicRenderers = new[] { WORLDLINE_R, CLASSIC };
-        static readonly string[] enunuRenderers = new[] { ENUNU, ENUNULAB };
+        static readonly string[] enunuRenderers = new[] { ENUNU };
         static readonly string[] vogenRenderers = new[] { VOGEN };
         static readonly string[] diffSingerRenderers = new[] { DIFFSINGER };
         static readonly string[] voicevoxRenderers = new[] { VOICEVOX };
