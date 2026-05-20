@@ -290,6 +290,17 @@ namespace OpenUtau.Core.Hts {
             int startTick = phrase.position;
             int endTick = phrase.position + phrase.duration;
 
+            // パディングを小節長で設定（開始・終了ともに1小節）
+            var sigStart = timeAxis.TimeSignatureAtTick(startTick);
+            var bpmStart = timeAxis.GetBpmAtTick(startTick);
+            var barLenMsStart = (int)Math.Round(60000.0 / bpmStart * sigStart.beatPerBar);
+            var barLenTicksStart = timeAxis.MsPosToTickPos(barLenMsStart);
+
+            var sigEnd = timeAxis.TimeSignatureAtTick(endTick);
+            var bpmEnd = timeAxis.GetBpmAtTick(endTick);
+            var barLenMsEnd = (int)Math.Round(60000.0 / bpmEnd * sigEnd.beatPerBar);
+            var barLenTicksEnd = timeAxis.MsPosToTickPos(barLenMsEnd);
+
             // 文全体の長さ（開始1小節 + 本体 + 終了1小節）
             double sentenceDurMs = headMs + phrase.endMs - phrase.positionMs + tailMs;
             int sentenceDurTicks = barLenTicksStart + (endTick - startTick) + barLenTicksEnd;
@@ -440,7 +451,7 @@ namespace OpenUtau.Core.Hts {
                 File.WriteAllLines(monoTimingPath, monoLabels_.Select(x => x.ToString()));
             } catch (Exception e) {
                 Log.Error(e.ToString());
-                throw e;
+                throw;
             }
         }
 
