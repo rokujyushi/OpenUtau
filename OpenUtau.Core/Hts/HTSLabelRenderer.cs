@@ -214,7 +214,7 @@ namespace OpenUtau.Core.Hts {
         }
 
         protected virtual bool IsSyllableVowelExtensionNote(RenderNote note) {
-            return note.lyric.StartsWith("+~") || note.lyric.StartsWith("+*");
+            return note.lyric.StartsWith("+") || note.lyric.StartsWith("-") || note.lyric.StartsWith("*") || note.lyric.StartsWith("~");
         }
 
         private string GetPhonemeType(string phoneme) {
@@ -311,7 +311,7 @@ namespace OpenUtau.Core.Hts {
 
 
             List<monoLabel> monoLabels_ = new List<monoLabel>();
-            double phonemeDuration = 0;
+            //double phonemeDuration = 0;
 
             HTSNote PaddingNoteStart = new HTSNote(
                 symbols: new string[] { "pau" },
@@ -337,10 +337,10 @@ namespace OpenUtau.Core.Hts {
 
             monoLabels_.Add(new monoLabel() {
                 symbol = htsPhonemes[0].symbol,
-                startMs = phonemeDuration,
+                startMs = 0,
                 endMs = headMs
             });
-            phonemeDuration += headMs;
+            //phonemeDuration += headMs;
 
             //Alignment
             var phonemesByNoteIndex = phrase.phones
@@ -354,12 +354,18 @@ namespace OpenUtau.Core.Hts {
                 var note = phrase.notes[noteIndex];
                 if (phonemesByNoteIndex.TryGetValue(noteIndex, out var phonemes)) {
                     foreach (var phone in phonemes) {
+                        var phoneStartMs = headMs + (phone.positionMs - phrase.positionMs);
+                        var phoneEndMs = headMs + (phone.endMs - phrase.positionMs);
+                        var lastMonoLabel = monoLabels_[^1];
+                        if (phoneStartMs < lastMonoLabel.endMs) {
+                            lastMonoLabel.endMs = phoneStartMs;
+                            monoLabels_[^1] = lastMonoLabel;
+                        }
                         monoLabels_.Add(new monoLabel() {
                             symbol = phone.phoneme,
-                            startMs = phonemeDuration,
-                            endMs = phonemeDuration + phone.durationMs
+                            startMs = phoneStartMs,
+                            endMs = phoneEndMs
                         });
-                        phonemeDuration += phone.durationMs;
                     }
 
                     lastBasePhonemes = phonemes;
@@ -369,17 +375,24 @@ namespace OpenUtau.Core.Hts {
                     // 拍点延長ノートは、直前の通常ノートの最後の母音を引き延ばす
                     var extensionPhoneme = FindLastVowelOrLastPhoneme(lastBasePhonemes);
                     if (!string.IsNullOrEmpty(extensionPhoneme.phoneme)) {
-                        var extensionStartMs = note.positionMs - phrase.positionMs + headMs;
-                        var extensionEndMs = note.endMs - phrase.positionMs + headMs;
+                        var htsNote = makeHtsNote(extensionPhoneme.phoneme, note, startTick, headMs);
+                        var extensionStartMs = htsNote.startMs;
+                        var extensionEndMs = htsNote.endMs;
+
+                        var lastMonoLabel = monoLabels_[^1];
+                        if (lastMonoLabel.symbol == extensionPhoneme.phoneme &&
+                            lastMonoLabel.startMs < extensionStartMs &&
+                            extensionStartMs < lastMonoLabel.endMs) {
+                            lastMonoLabel.endMs = extensionStartMs;
+                            monoLabels_[^1] = lastMonoLabel;
+                        }
 
                         monoLabels_.Add(new monoLabel() {
                             symbol = extensionPhoneme.phoneme,
-                            startMs = phonemeDuration,
-                            endMs = phonemeDuration + note.durationMs
+                            startMs = extensionStartMs,
+                            endMs = extensionEndMs
                         });
-                        phonemeDuration += note.durationMs;
 
-                        HTSNote htsNote = makeHtsNote(extensionPhoneme.phoneme, note, startTick, headMs);
                         tuples.Add(Tuple.Create(htsNote, noteIndex));
                     }
                 } else {
@@ -424,7 +437,7 @@ namespace OpenUtau.Core.Hts {
 
             monoLabels_.Add(new monoLabel() {
                 symbol = htsPhonemes[^1].symbol,
-                startMs = phonemeDuration,
+                startMs = sentenceDurMs - tailMs,
                 endMs = sentenceDurMs
             });
 
