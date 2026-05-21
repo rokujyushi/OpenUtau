@@ -322,7 +322,7 @@ namespace OpenUtau.Core.Hts {
                     .ToArray();
             }
             // User has not provided hint, query g2p dictionary.
-            var g2presult = g2p.Query(note.lyric.ToLowerInvariant());
+            var g2presult = g2p.Query(note.lyric);
             if (g2presult != null) {
                 return g2presult;
             }
