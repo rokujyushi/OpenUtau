@@ -39,9 +39,6 @@ namespace OpenUtau.App.Controls {
         private NoteEditState? editState;
         private Point valueTipPointerPosition;
         private bool shouldOpenNotesContextMenu;
-        private bool timelineSelectingRange;
-        private int timelineSelectionInitialLeft;
-        private int timelineSelectionInitialRight;
 
         private ReactiveCommand<Unit, Unit>? lyricsDialogCommand;
         private ReactiveCommand<Unit, Unit>? noteDefaultsCommand;
@@ -555,15 +552,6 @@ namespace OpenUtau.App.Controls {
             var point = args.GetCurrentPoint(control);
             if (point.Properties.IsLeftButtonPressed) {
                 args.Pointer.Capture(control);
-                if ((args.KeyModifiers & KeyModifiers.Shift) != 0) {
-                    ViewModel.NotesViewModel.PointToLineTick(point.Position, out int rangeLeft, out int rangeRight);
-                    timelineSelectingRange = true;
-                    timelineSelectionInitialLeft = rangeLeft;
-                    timelineSelectionInitialRight = rangeRight;
-                    ViewModel.NotesViewModel.SetSelectionRange(rangeLeft, rangeRight);
-                    LyricBox?.EndEdit();
-                    return;
-                }
                 ViewModel.NotesViewModel.PointToLineTick(point.Position, out int left, out int right);
                 int tick = left + ViewModel.NotesViewModel.Part?.position ?? 0;
                 ViewModel.PlaybackViewModel?.MovePlayPos(tick);
@@ -575,17 +563,6 @@ namespace OpenUtau.App.Controls {
             var control = (Control)sender;
             var point = args.GetCurrentPoint(control);
             if (point.Properties.IsLeftButtonPressed) {
-                if (timelineSelectingRange) {
-                    ViewModel.NotesViewModel.PointToLineTick(point.Position, out int rangeLeft, out int rangeRight);
-                    if (rangeRight <= timelineSelectionInitialLeft) {
-                        ViewModel.NotesViewModel.SetSelectionRange(rangeLeft, timelineSelectionInitialRight);
-                    } else if (rangeLeft >= timelineSelectionInitialRight) {
-                        ViewModel.NotesViewModel.SetSelectionRange(timelineSelectionInitialLeft, rangeRight);
-                    } else {
-                        ViewModel.NotesViewModel.SetSelectionRange(timelineSelectionInitialLeft, timelineSelectionInitialRight);
-                    }
-                    return;
-                }
                 ViewModel.NotesViewModel.PointToLineTick(point.Position, out int left, out int right);
                 int tick = left + ViewModel.NotesViewModel.Part?.position ?? 0;
                 ViewModel.PlaybackViewModel?.MovePlayPos(tick);
@@ -593,10 +570,6 @@ namespace OpenUtau.App.Controls {
         }
 
         public void TimelinePointerReleased(object sender, PointerReleasedEventArgs args) {
-            if (timelineSelectingRange) {
-                ViewModel.NotesViewModel.CommitSelectionRange();
-                timelineSelectingRange = false;
-            }
             args.Pointer.Capture(null);
         }
 

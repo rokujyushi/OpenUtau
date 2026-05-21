@@ -118,7 +118,6 @@ namespace OpenUtau.App.ViewModels {
 
         public ReactiveCommand<int, Unit> SetSnapUnitCommand { get; set; }
         public ReactiveCommand<int, Unit> SetKeyCommand { get; set; }
-        public TimelineSelectionViewModel TimelineSelection { get; }
 
         // See the comments on TracksViewModel.playPosXToTickOffset
         private double playPosXToTickOffset => Bounds.Width != 0 ? ViewportTicks / Bounds.Width : 0;
@@ -131,14 +130,17 @@ namespace OpenUtau.App.ViewModels {
         public readonly NoteSelectionViewModel Selection = new NoteSelectionViewModel();
 
         internal NotesViewModelHitTest HitTest;
+        private readonly TracksViewModel tracksViewModel;
         private int _lastNoteLength = 480;
         private string? portraitSource;
         private readonly object portraitLock = new object();
         private int userSnapDiv = -2;
         private int userKey => Project.key;
 
-        public NotesViewModel(TimelineSelectionViewModel? timelineSelection = null) {
-            TimelineSelection = timelineSelection ?? new TimelineSelectionViewModel();
+        public NotesViewModel(TracksViewModel tracksViewModel) {
+            System.ArgumentNullException.ThrowIfNull(tracksViewModel);
+
+            this.tracksViewModel = tracksViewModel;
             SnapDivs = new List<MenuItemViewModel>();
             SetSnapUnitCommand = ReactiveCommand.Create<int>(div => {
                 userSnapDiv = div;
@@ -182,13 +184,14 @@ namespace OpenUtau.App.ViewModels {
                     SetPlayPos(DocManager.Inst.playPosTick, false);
                     UpdateSelectionRangeVisual();
                 });
-            TimelineSelection.WhenAnyValue(x => x.SelectionAnchorTick, x => x.SelectionActiveTick, x => x.HasSelectionRange, x => x.IsSelectingRange)
+            tracksViewModel.WhenAnyValue(
+                    x => x.SelectionAnchorTick,
+                    x => x.SelectionActiveTick,
+                    x => x.HasSelectionRange,
+                    x => x.IsSelectingRange)
                 .Subscribe(_ => {
-                    SyncSelectionRangeFromTimeline();
+                    SyncSelectionRangeFromTracks();
                     RaiseSelectionRangeProperties();
-                    this.RaisePropertyChanged(nameof(SelectionEndX));
-                    this.RaisePropertyChanged(nameof(SelectionLeftMarkerX));
-                    this.RaisePropertyChanged(nameof(SelectionRightMarkerX));
                     UpdateSelectionRangeVisual();
                 });
             this.WhenAnyValue(x => x.ExpBounds, x => x.PrimaryKey)
@@ -378,9 +381,9 @@ namespace OpenUtau.App.ViewModels {
             SnapDivText = $"(1/{div})";
         }
 
-        private void UpdateKey(){
+        private void UpdateKey() {
             Key = userKey;
-            KeyText = "1="+MusicMath.KeysInOctave[userKey].Item1;
+            KeyText = "1=" + MusicMath.KeysInOctave[userKey].Item1;
         }
 
         public void OnXZoomed(Point position, double delta) {
@@ -433,12 +436,18 @@ namespace OpenUtau.App.ViewModels {
             this.RaisePropertyChanged(nameof(SelectionRightMarkerX));
         }
 
-        private void SyncSelectionRangeFromTimeline() {
-            int partPosition = Part?.position ?? 0;
-            SelectionAnchorTick = TimelineSelection.SelectionAnchorTick - partPosition;
-            SelectionActiveTick = TimelineSelection.SelectionActiveTick - partPosition;
-            HasSelectionRange = TimelineSelection.HasSelectionRange;
-            IsSelectingRange = TimelineSelection.IsSelectingRange;
+        private void SyncSelectionRangeFromTracks() {
+            if (Part == null) {
+                SelectionAnchorTick = 0;
+                SelectionActiveTick = 0;
+                HasSelectionRange = false;
+                IsSelectingRange = false;
+                return;
+            }
+            SelectionAnchorTick = tracksViewModel.SelectionAnchorTick - Part.position;
+            SelectionActiveTick = tracksViewModel.SelectionActiveTick - Part.position;
+            HasSelectionRange = tracksViewModel.HasSelectionRange;
+            IsSelectingRange = tracksViewModel.IsSelectingRange;
         }
 
         private void UpdateSelectionRangeVisual() {
@@ -456,25 +465,8 @@ namespace OpenUtau.App.ViewModels {
             this.RaisePropertyChanged(nameof(SelectionRightMarkerX));
         }
 
-        public void BeginSelectionRange(int tick) {
-            TimelineSelection.BeginSelectionRange((Part?.position ?? 0) + tick);
-        }
-
-        public void UpdateSelectionRange(int tick) {
-            TimelineSelection.UpdateSelectionRange((Part?.position ?? 0) + tick);
-        }
-
-        public void CommitSelectionRange() {
-            TimelineSelection.CommitSelectionRange();
-        }
-
-        public void SetSelectionRange(int startTick, int endTick) {
-            int partPosition = Part?.position ?? 0;
-            TimelineSelection.SetSelectionRange(partPosition + startTick, partPosition + endTick);
-        }
-
         public void ClearSelectionRange() {
-            TimelineSelection.ClearSelectionRange();
+            tracksViewModel.ClearSelectionRange();
         }
 
         /// <summary>
@@ -574,7 +566,7 @@ namespace OpenUtau.App.ViewModels {
                 targetHeight = PortraitHeight;
             }
             int targetWidth = (int)Math.Round(targetHeight * Portrait.Size.Width / Portrait.Size.Height);
-            if(targetWidth == 0){
+            if (targetWidth == 0) {
                 targetWidth = 1;
             }
             return Portrait.CreateScaledBitmap(new PixelSize(targetWidth, targetHeight));
@@ -627,7 +619,7 @@ namespace OpenUtau.App.ViewModels {
                                 Portrait = null;
                                 portraitSource = null;
                             } else {
-                                using (var stream = new MemoryStream(data)) { 
+                                using (var stream = new MemoryStream(data)) {
                                     Portrait = ResizePortrait(new Bitmap(stream), singer.PortraitHeight);
                                     portraitSource = singer.Portrait;
                                 }
@@ -666,6 +658,9 @@ namespace OpenUtau.App.ViewModels {
         private void UnloadPart() {
             DeselectNotes();
             Part = null;
+            SyncSelectionRangeFromTracks();
+            RaiseSelectionRangeProperties();
+            UpdateSelectionRangeVisual();
             LoadPortrait(null, null);
             LoadWindowTitle(null, null);
         }
@@ -675,7 +670,9 @@ namespace OpenUtau.App.ViewModels {
                 return;
             }
             TickOrigin = Part.position;
-            SyncSelectionRangeFromTimeline();
+            SyncSelectionRangeFromTracks();
+            RaiseSelectionRangeProperties();
+            UpdateSelectionRangeVisual();
             Notify();
         }
 
@@ -723,18 +720,18 @@ namespace OpenUtau.App.ViewModels {
             if (Selection.Move(delta)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
                 ScrollIntoView(Selection.Head!);
-            };
+            }
         }
         public void ExtendSelection(int delta) {
             if (Selection.Resize(delta)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
                 ScrollIntoView(Selection.Head!);
-            };
+            }
         }
         public void ExtendSelection(UNote note) {
             if (Selection.SelectTo(note)) {
                 MessageBus.Current.SendMessage(new NotesSelectionEvent(Selection));
-            };
+            }
         }
 
         public void MoveCursor(int delta) {
@@ -907,7 +904,7 @@ namespace OpenUtau.App.ViewModels {
             notes.Sort((a, b) => a.position.CompareTo(b.position));
             //Ignore slur lyrics
             var mergedLyrics = String.Join("", notes.Select(x => x.lyric).Where(l => !l.StartsWith("+")));
-            if(mergedLyrics == ""){ //If all notes are slur, the merged note is single slur note
+            if (mergedLyrics == "") { //If all notes are slur, the merged note is single slur note
                 mergedLyrics = notes[0].lyric;
             }
             DocManager.Inst.StartUndoGroup("command.note.edit");
@@ -1017,7 +1014,7 @@ namespace OpenUtau.App.ViewModels {
         public async void PasteSelectedParams(Window window) {
             if (Part != null && DocManager.Inst.NotesClipboard != null && DocManager.Inst.NotesClipboard.Count > 0) {
                 var selectedNotes = Selection.ToList();
-                if(selectedNotes.Count == 0) {
+                if (selectedNotes.Count == 0) {
                     return;
                 }
 
