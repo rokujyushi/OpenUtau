@@ -85,19 +85,15 @@ namespace OpenUtau.App.ViewModels {
         public double SmallChangeY => smallChangeY.Value;
         public double HScrollBarMax => Math.Max(0, TickCount - ViewportTicks);
         public double VScrollBarMax => Math.Max(0, TrackCount - ViewportTracks);
-        public int SelectionAnchorTick => TimelineSelection.SelectionAnchorTick;
-        public int SelectionActiveTick => TimelineSelection.SelectionActiveTick;
-        public bool HasSelectionRange => TimelineSelection.HasSelectionRange;
-        public bool IsSelectingRange {
-            get => TimelineSelection.IsSelectingRange;
-            set => TimelineSelection.IsSelectingRange = value;
-        }
-        public int SelectionStartTick => TimelineSelection.SelectionStartTick;
-        public int SelectionEndTick => TimelineSelection.SelectionEndTick;
-        public int SelectionDurationTicks => TimelineSelection.SelectionDurationTicks;
+        [Reactive] public int SelectionAnchorTick { get; set; }
+        [Reactive] public int SelectionActiveTick { get; set; }
+        [Reactive] public bool HasSelectionRange { get; set; }
+        [Reactive] public bool IsSelectingRange { get; set; }
+        public int SelectionStartTick => Math.Min(SelectionAnchorTick, SelectionActiveTick);
+        public int SelectionEndTick => Math.Max(SelectionAnchorTick, SelectionActiveTick);
+        public int SelectionDurationTicks => SelectionEndTick - SelectionStartTick;
         public ObservableCollectionExtended<UPart> Parts { get; } = new ObservableCollectionExtended<UPart>();
         public ObservableCollectionExtended<UTrack> Tracks { get; } = new ObservableCollectionExtended<UTrack>();
-        public TimelineSelectionViewModel TimelineSelection { get; }
 
         // There are two kinds of values here. Let's call them PlayPosX values and TickOffset values.
         // Bounds.Width (which binds to the TrackBackground control) belongs to the former, and
@@ -121,8 +117,7 @@ namespace OpenUtau.App.ViewModels {
         public readonly List<UTrack> SelectedTracks = new List<UTrack>();
         private readonly HashSet<UPart> TempSelectedParts = new HashSet<UPart>();
 
-        public TracksViewModel(TimelineSelectionViewModel timelineSelection) {
-            TimelineSelection = timelineSelection;
+        public TracksViewModel() {
             viewportTicks = this.WhenAnyValue(x => x.Bounds, x => x.TickWidth)
                 .Select(v => v.Item1.Width / v.Item2)
                 .ToProperty(this, x => x.ViewportTicks);
@@ -150,17 +145,6 @@ namespace OpenUtau.App.ViewModels {
             this.WhenAnyValue(x => x.TickOffset)
                 .Subscribe(tickOffset => {
                     SetPlayPos(DocManager.Inst.playPosTick, false);
-                    UpdateSelectionRangeVisual();
-                });
-            TimelineSelection.WhenAnyValue(
-                    x => x.SelectionAnchorTick,
-                    x => x.SelectionActiveTick,
-                    x => x.HasSelectionRange)
-                .Subscribe(_ => {
-                    RaiseSelectionRangeProperties();
-                    this.RaisePropertyChanged(nameof(SelectionEndX));
-                    this.RaisePropertyChanged(nameof(SelectionLeftMarkerX));
-                    this.RaisePropertyChanged(nameof(SelectionRightMarkerX));
                     UpdateSelectionRangeVisual();
                 });
 
@@ -300,15 +284,45 @@ namespace OpenUtau.App.ViewModels {
         }
 
         internal void SetSelectionRange(int startTick, int endTick) {
-            TimelineSelection.SetSelectionRange(startTick, endTick);
+            ApplySelectionRange(startTick, endTick, true, false);
+        }
+
+        internal void BeginSelectionRange(int tick) {
+            ApplySelectionRange(tick, tick, true, true);
+        }
+
+        internal void UpdateSelectionRange(int tick) {
+            if (!HasSelectionRange) {
+                return;
+            }
+            ApplySelectionRange(SelectionAnchorTick, tick, true, true);
+        }
+
+        internal void UpdateSelectionRange(int anchorTick, int activeTick) {
+            if (!HasSelectionRange) {
+                return;
+            }
+            ApplySelectionRange(anchorTick, activeTick, true, true);
         }
 
         internal void CommitSelectionRange() {
-            TimelineSelection.CommitSelectionRange();
+            if (!HasSelectionRange) {
+                return;
+            }
+            ApplySelectionRange(SelectionAnchorTick, SelectionActiveTick, true, false);
         }
 
         internal void ClearSelectionRange() {
-            TimelineSelection.ClearSelectionRange();
+            ApplySelectionRange(0, 0, false, false);
+        }
+
+        private void ApplySelectionRange(int anchorTick, int activeTick, bool hasSelectionRange, bool isSelectingRange) {
+            SelectionAnchorTick = anchorTick;
+            SelectionActiveTick = activeTick;
+            HasSelectionRange = hasSelectionRange;
+            IsSelectingRange = isSelectingRange;
+            RaiseSelectionRangeProperties();
+            UpdateSelectionRangeVisual();
         }
 
         public void AddTrack() {

@@ -11,6 +11,65 @@ using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 
 namespace OpenUtau.App.Views {
+    class TimeLineEditState {
+        public virtual MouseButton MouseButton => MouseButton.Left;
+        public readonly Control control;
+        public readonly MainWindowViewModel vm;
+        public Point startPoint;
+        protected virtual string? commandNameKey => null;
+
+        public TimeLineEditState(Control control, MainWindowViewModel vm) {
+            this.control = control;
+            this.vm = vm;
+        }
+        public virtual void Begin(IPointer pointer, Point point) {
+            pointer.Capture(control);
+            startPoint = point;
+            if (!string.IsNullOrEmpty(commandNameKey)) {
+                DocManager.Inst.StartUndoGroup(commandNameKey);
+            }
+        }
+        public virtual void End(IPointer pointer, Point point) {
+            pointer.Capture(null);
+            if (!string.IsNullOrEmpty(commandNameKey)) {
+                DocManager.Inst.EndUndoGroup();
+            }
+        }
+        public virtual void Update(IPointer pointer, Point point) { }
+    }
+
+    class TimelineSelectionEditState : TimeLineEditState {
+        private int initialLeft;
+        private int initialRight;
+
+        public TimelineSelectionEditState(Control control, MainWindowViewModel vm) : base(control, vm) {
+        }
+
+        public override void Begin(IPointer pointer, Point point) {
+            base.Begin(pointer, point);
+            var tracksVm = vm.TracksViewModel;
+            tracksVm.PointToLineTick(point, out initialLeft, out initialRight);
+            tracksVm.BeginSelectionRange(initialLeft);
+            tracksVm.UpdateSelectionRange(initialRight);
+        }
+
+        public override void End(IPointer pointer, Point point) {
+            vm.TracksViewModel.CommitSelectionRange();
+            base.End(pointer, point);
+        }
+
+        public override void Update(IPointer pointer, Point point) {
+            var tracksVm = vm.TracksViewModel;
+            tracksVm.PointToLineTick(point, out int rangeLeft, out int rangeRight);
+            if (rangeRight <= initialLeft) {
+                tracksVm.UpdateSelectionRange(initialRight, rangeLeft);
+            } else if (rangeLeft >= initialRight) {
+                tracksVm.UpdateSelectionRange(initialLeft, rangeRight);
+            } else {
+                tracksVm.UpdateSelectionRange(initialLeft, initialRight);
+            }
+        }
+    }
     class PartEditState {
         public virtual MouseButton MouseButton => MouseButton.Left;
         public readonly Control control;
