@@ -75,7 +75,12 @@ namespace OpenUtau.Core.Voicevox {
                         list.Remove(list[0]);
                         break;
                     } else if (VoicevoxUtils.phoneme_List.consonants.Contains(list[0].phoneme)) {
-                        phoneme.Add(new Phoneme() { phoneme = list[0].phoneme, position = noteGroup[0].position - (int)timeAxis.MsPosToTickPos((list[0].frame_length / VoicevoxUtils.fps) * 1000) });
+                        double consonantMs = (list[0].frame_length / VoicevoxUtils.fps) * 1000;
+                        int tickOffset = (int)timeAxis.MsPosToTickPos(Math.Max(0, consonantMs));
+                        phoneme.Add(new Phoneme() {
+                            phoneme = list[0].phoneme,
+                            position = noteGroup[0].position - tickOffset
+                        });
                     }
                     list.Remove(list[0]);
                 }

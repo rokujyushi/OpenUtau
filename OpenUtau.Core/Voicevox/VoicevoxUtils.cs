@@ -239,6 +239,50 @@ namespace OpenUtau.Core.Voicevox {
             dic.Loaddic(singer.Location);
         }
 
+        public static bool IsPlosive(string lyric) {
+            string[] plosives = {
+                "p", "py",
+                "t", "ty", "ts",
+                "k", "ky", "kw",
+                "ch"
+            };
+
+            return plosives.Any(c =>
+                lyric.StartsWith(c));
+        }
+
+        public static readonly Dictionary<string, double> consonantOffsetMs = new() {
+            { "p", -25 },
+            { "py", -25 },
+
+            { "t", -20 },
+            { "ty", -20 },
+
+            { "k", -15 },
+            { "ky", -15 },
+            { "kw", -15 },
+
+            { "ch", -30 },
+            { "ts", -30 },
+
+            { "s", -10 },
+            { "sh", -15 },
+
+            //{ "f", -10 },
+            //{ "h", -5 },
+        };
+        public static double GetPhonemeOffset(string phoneme) {
+
+            if (consonantOffsetMs.TryGetValue(
+                phoneme,
+                out double offset)) {
+
+                return offset;
+            }
+
+            return 0;
+        }
+
         public static VoicevoxQueryMain NoteGroupsToVQuery(VoicevoxNote[] vNotes, TimeAxis timeAxis, bool pitch_slur = false) {
             VoicevoxQueryMain vqMain = new VoicevoxQueryMain();
             try {
@@ -248,12 +292,11 @@ namespace OpenUtau.Core.Voicevox {
                     key = null,
                     vqnindex = -1
                 });
-                int short_length_count = 0;
                 int slur_index = 0;
                 VoicevoxNote lastNote = new VoicevoxNote();
+                double currentMs = 0;
                 for (int index = 0; index < vNotes.Length;) {
                     string lyric = dic.Notetodic(vNotes, index);
-                    double durationMs = vNotes[index].durationMs;
                     // When slurs are considered in pitch generation, vowel-stretched notes inherit the Kana of the previous note
                     if (IsSyllableVowelExtensionNote(vNotes[index].lyric) && pitch_slur) {
                         if (index > 0 && !String.IsNullOrEmpty(lastNote.lyric)) {
@@ -268,21 +311,34 @@ namespace OpenUtau.Core.Voicevox {
                         slur_index = 0;
                         lastNote = vNotes[index];
                     }
-                    int length = (int)Math.Round((durationMs / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
-                    //Avoid synthesis without at least two frames.
-                    if (length < 2) {
-                        length = 2;
+                    double startMs = vNotes[index].positionMs;
+                    double endMs =
+                        vNotes[index].positionMs
+                        + vNotes[index].durationMs;
+
+                    int startFrame = (int)Math.Round(
+                        (startMs / 1000.0) * VoicevoxUtils.fps,
+                        MidpointRounding.AwayFromZero);
+
+                    double exactEnd = (endMs / 1000.0) * VoicevoxUtils.fps;
+
+                    int endFrame;
+
+                    if (IsPlosive(WanaKanaNet.WanaKana.ToRomaji(lyric).ToList().FirstOrDefault().ToString())) {
+                        endFrame = (int)Math.Ceiling(exactEnd);
+                    } else {
+                        endFrame = (int)Math.Round(
+                            exactEnd,
+                            MidpointRounding.AwayFromZero);
                     }
 
-                    if (durationMs > (length / VoicevoxUtils.fps) * 1000f) {
-                        // If the note length is longer than the rounded length, increase the length by one.
-                        if (short_length_count >= 2) {
-                            length += 1;
-                            short_length_count = 0;
-                        } else {
-                            short_length_count += 1;
-                        }
-                    }
+                    int length = endFrame - startFrame;
+
+                    currentMs = endMs;
+                    //Avoid synthesis without at least two frames.
+                    //if (length < 2) {
+                    //    length = 2;
+                    //}
                     //Usually synthesis adds the length of the slur to the previous note.
                     if (IsSyllableVowelExtensionNote(vNotes[index].lyric) && !pitch_slur) {
                         vqMain.notes[^1].frame_length += length;
@@ -313,10 +369,21 @@ namespace OpenUtau.Core.Voicevox {
                     key = null,
                     vqnindex = -1
                 });
+                int expectedFrames = (int)Math.Round( (vNotes.Sum(x => x.durationMs) / 1000.0) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
 
+                int actualFrames = vqMain.notes.Sum(x => x.frame_length) - vqMain.notes[0].frame_length - vqMain.notes[^1].frame_length;
+
+                int diff = expectedFrames - actualFrames;
+                for (int i = vqMain.notes.Count - 2; i >= 1; i--) {
+                    if (vqMain.notes[i].frame_length + diff >= 2) {
+                        vqMain.notes[i].frame_length += diff;
+                        break;
+                    }
+                }
             } catch (Exception e) {
                 Log.Error(e, $"VoicevoxQueryNotes setup error: {e.Message}");
             }
+            Log.Information($"{vNotes.Sum(x => x.durationMs)},{(vqMain.notes.Sum(x => x.frame_length) / VoicevoxUtils.fps) * 1000f},{(int)Math.Round((vNotes.Sum(x => x.durationMs) / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero)},{vqMain.notes.Sum(x => x.frame_length)}");
             return vqMain;
         }
 

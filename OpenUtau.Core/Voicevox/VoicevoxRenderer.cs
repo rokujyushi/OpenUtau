@@ -9,6 +9,7 @@ using NAudio.Wave;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OpenUtau.Core.Format;
+using OpenUtau.Core.Format.MusicXMLSchema;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
 using Serilog;
@@ -25,7 +26,7 @@ namespace OpenUtau.Core.Voicevox {
         const string VOLC = VoicevoxUtils.VOLC;
         const string SMOC = VoicevoxUtils.SMOC;
         const string REPM = VoicevoxUtils.REPM;
-        const string DUCM = VoicevoxUtils.DUCM;
+        //const string DUCM = VoicevoxUtils.DUCM;
         const string PITD = Format.Ustx.PITD;
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
@@ -38,7 +39,7 @@ namespace OpenUtau.Core.Voicevox {
             VOLC,
             SMOC,
             REPM,
-            DUCM
+            //DUCM
         };
 
         static readonly object lockObj = new object();
@@ -52,9 +53,15 @@ namespace OpenUtau.Core.Voicevox {
         }
 
         public RenderResult Layout(RenderPhrase phrase) {
+            double frameMs = 1000.0 / VoicevoxUtils.fps;
+            int headFrames = (int)Math.Round(VoicevoxUtils.headS * VoicevoxUtils.fps);
+            const int AlignmentFrames = 1;
+
+            double correctionMs = (headFrames + AlignmentFrames) * frameMs;
+
             return new RenderResult() {
                 leadingMs = phrase.leadingMs,
-                positionMs = phrase.positionMs - ((VoicevoxUtils.headS * 1000)),
+                positionMs = phrase.positionMs - correctionMs,
                 estimatedLengthMs = phrase.durationMs + phrase.leadingMs,
             };
         }
@@ -267,37 +274,59 @@ namespace OpenUtau.Core.Voicevox {
                     phoneme = "pau",
                     frame_length = headFrames
                 });
-                int short_length_count = 0;
+                double currentMs = 0;
                 for (int i = 0; i < phrase.phones.Length; i++) {
-                    double durationMs = phrase.phones[i].durationMs;
-                    int length = (int)Math.Round((durationMs / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
-                    if (length < 2) {
-                        length = 2;
+                    double startMs = phrase.phones[i].positionMs;
+                    double endMs =
+                        phrase.phones[i].positionMs
+                        + phrase.phones[i].durationMs;
+
+                    int startFrame = (int)Math.Round(
+                        (startMs / 1000.0) * VoicevoxUtils.fps,
+                        MidpointRounding.AwayFromZero);
+
+                    double exactEnd = (endMs / 1000.0) * VoicevoxUtils.fps;
+
+                    int endFrame;
+
+                    if (VoicevoxUtils.IsPlosive(phrase.phones[i].phoneme)) {
+                        endFrame = (int)Math.Ceiling(exactEnd);
+                    } else {
+                        endFrame = (int)Math.Round(
+                            exactEnd,
+                            MidpointRounding.AwayFromZero);
                     }
+
+                    int length = endFrame - startFrame;
+
+                    currentMs = endMs;
+                    //if (length < 2) {
+                    //    length = 2;
+                    //}
                     int correction = 0;
-                    var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item3.Equals(DUCM));
-                    if (flag != null) {
-                        switch (flag.Item1) {
-                            case VoicevoxUtils.ON:
-                                correction = 1;
-                                break;
-                            case VoicevoxUtils.OFF:
-                                correction = 2;
-                                break;
-                        }
-                    }
-                    if (correction != 2) {
-                        if (durationMs > (length / VoicevoxUtils.fps) * 1000f) {
-                            if (short_length_count >= 2) {
-                                length += 1;
-                                short_length_count = 0;
-                            } else {
-                                short_length_count += 1;
-                            }
-                        } else if (correction == 1) {
-                            length += 1;
-                        }
-                    }
+                    //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item3.Equals(DUCM));
+                    //if (flag != null) {
+                    //    switch (flag.Item1) {
+                    //        case VoicevoxUtils.ON:
+                    //            correction = 1;
+                    //            break;
+                    //        case VoicevoxUtils.OFF:
+                    //            correction = 2;
+                    //            break;
+                    //    }
+                    //}
+                    //if (correction != 2) {
+                    //    if (durationMs > (length / VoicevoxUtils.fps) * 1000f) {
+                    //        if (short_length_count >= 2) {
+                    //            length += 1;
+                    //            short_length_count = 0;
+                    //        } else {
+                    //            short_length_count += 1;
+                    //        }
+                    //    } else if (correction == 1) {
+                    //        length += 1;
+                    //    }
+                    //}
                     vsParams.phonemes.Add(new Phonemes() {
                         phoneme = phrase.phones[i].phoneme,
                         frame_length = length
@@ -387,13 +416,13 @@ namespace OpenUtau.Core.Voicevox {
                 //    isFlag = false,
                 //},
                 //duration correction mode
-                new UExpressionDescriptor{
-                    name = "duration correction mode",
-                    abbr = DUCM,
-                    type = UExpressionType.Options,
-                    options = new string[] { VoicevoxUtils.AUTO, VoicevoxUtils.ON, VoicevoxUtils.OFF},
-                    isFlag = true,
-                },
+                //new UExpressionDescriptor{
+                //    name = "duration correction mode",
+                //    abbr = DUCM,
+                //    type = UExpressionType.Options,
+                //    options = new string[] { VoicevoxUtils.AUTO, VoicevoxUtils.ON, VoicevoxUtils.OFF},
+                //    isFlag = true,
+                //},
             };
 
             return result.ToArray();
