@@ -250,13 +250,14 @@ namespace OpenUtau.Core.Voicevox {
                 });
                 int short_length_count = 0;
                 int slur_index = 0;
+                VoicevoxNote lastNote = new VoicevoxNote();
                 for (int index = 0; index < vNotes.Length;) {
                     string lyric = dic.Notetodic(vNotes, index);
                     double durationMs = vNotes[index].durationMs;
                     // When slurs are considered in pitch generation, vowel-stretched notes inherit the Kana of the previous note
                     if (IsSyllableVowelExtensionNote(vNotes[index].lyric) && pitch_slur) {
-                        if (index > 0) {
-                            if (VoicevoxUtils.phoneme_List.kanas.TryGetValue(vNotes[index - 1].lyric, out string str)) {
+                        if (index > 0 && !String.IsNullOrEmpty(lastNote.lyric)) {
+                            if (VoicevoxUtils.phoneme_List.kanas.TryGetValue(lastNote.lyric, out string str)) {
                                 lyric = str;
                                 slur_index++;
                             }
@@ -265,6 +266,7 @@ namespace OpenUtau.Core.Voicevox {
                         }
                     } else {
                         slur_index = 0;
+                        lastNote = vNotes[index];
                     }
                     int length = (int)Math.Round((durationMs / 1000f) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero);
                     //Avoid synthesis without at least two frames.
@@ -283,7 +285,8 @@ namespace OpenUtau.Core.Voicevox {
                     }
                     //Usually synthesis adds the length of the slur to the previous note.
                     if (IsSyllableVowelExtensionNote(vNotes[index].lyric) && !pitch_slur) {
-                        vqMain.notes[index].frame_length += length;
+                        vqMain.notes[^1].frame_length += length;
+                        index++;
                         continue;
                     }
 
