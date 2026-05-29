@@ -451,7 +451,9 @@ namespace OpenUtau.Core.Voicevox {
                     if (phrase.phones[0].direct) {
                         writer.Write(phrase.phones[0].toneShift);
                     } else {
-                        phrase.phones.ForEach(x => writer.Write(x.toneShift));
+                        foreach (var phone in phrase.phones) {
+                            writer.Write(phone.tone);
+                        }
                     }
                     writer.Write(phrase.phones[0].volume);
                     return XXH64.DigestOf(stream.ToArray());
