@@ -18,6 +18,10 @@ namespace OpenUtau.Core.DawIntegration {
     /// </summary>
     public abstract class DawOuNotification : DawMessage {
     }
+    public sealed class PingNotification : DawOuNotification {
+    }
+    public sealed class PlaybackStartedNotification : DawOuNotification {
+    }
     /// <summary>
     /// OpenUtau to DAW request.
     /// </summary>
