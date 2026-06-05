@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(DPF_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/deps/dpf")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -76,7 +79,6 @@ dpf_add_plugin(
 set(ZLIB_BUILD_EXAMPLES OFF)
 set(RENAME_ZCONF OFF)
 add_subdirectory(deps/zlib)
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
 target_include_directories(
   ${PROJECT_NAME}
