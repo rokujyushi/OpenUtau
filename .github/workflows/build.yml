@@ -33,10 +33,10 @@ jobs:
           - { name: win-x64, rid: win-x64, arch: x64, os: win, runs-on: windows-latest, daw-plugin: true }
           - { name: win-x86, rid: win-x86, arch: x86, os: win, runs-on: windows-latest, daw-plugin: false }
           - { name: win-arm64, rid: win-arm64, arch: arm64, os: win, runs-on: windows-latest, daw-plugin: true }
-          - { name: osx-x64, rid: osx-x64, arch: x64, os: osx, runs-on: macos-13, daw-plugin: true }
-          - { name: osx-arm64, rid: osx-arm64, arch: arm64, os: osx, runs-on: macos-13, daw-plugin: true }
-          - { name: linux-x64, rid: linux-x64, arch: x64, os: linux, runs-on: ubuntu-latest, daw-plugin: true }
-          - { name: linux-arm64, rid: linux-arm64, arch: arm64, os: linux, runs-on: ubuntu-latest, daw-plugin: true }
+          - { name: osx-x64, rid: osx-x64, arch: x64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
+          - { name: osx-arm64, rid: osx-arm64, arch: arm64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
+          - { name: linux-x64, rid: linux-x64, arch: x64, os: linux, runs-on: ubuntu-latest, linuxarch: x86_64, daw-plugin: true }
+          - { name: linux-arm64, rid: linux-arm64, arch: arm64, os: linux, runs-on: ubuntu-latest, linuxarch: aarch64, daw-plugin: true }
 
     steps:
       # Setup
@@ -51,9 +51,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - uses: repolevedavaj/install-nsis@v1.0.3
-        with:
-          nsis-version: '3.11'
+      - name: Install NSIS via Chocolatey
+        run: choco install nsis --version=3.11 --no-progress
         if: ${{ matrix.arch.os == 'win' }}
       - uses: justalemon/VersionPatcher@v0.7.1
         with:
@@ -68,7 +67,7 @@ jobs:
       - name: Restore
         run: dotnet restore OpenUtau -r ${{ matrix.arch.rid }}
 
-      - name: Publish
+      - name: Build (Windows and Linux)
         run: dotnet publish OpenUtau -c Release -r ${{ matrix.arch.rid }} --self-contained true -o bin/${{ matrix.arch.name }}/
         if: ${{ matrix.arch.os != 'osx' }}
 
@@ -122,11 +121,19 @@ jobs:
           7z a openutau_daw_plugin-${{ matrix.arch.name }}.au.zip openutau_daw_plugin.component
         if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
 
+      - name: Build (MacOS)
+        run: dotnet msbuild OpenUtau -t:BundleApp -p:Configuration=Release -p:RuntimeIdentifier=${{ matrix.arch.rid }} -p:UseAppHost=true -p:SelfContained=true -p:OutputPath=../bin/${{ matrix.arch.name }}/
+        if: ${{ matrix.arch.os == 'osx' }}
+      
+      - name: Write release channel info
+        run: "@{Beta=$${{ inputs.beta }}} | ConvertTo-Json > bin/${{ matrix.arch.name }}/prefs-default.json"
+        shell: pwsh
+
       # Create Zip
       - name: DirectML
         shell: cmd
         run: |
-          curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.12.1 -o Microsoft.AI.DirectML.nupkg
+          curl -L https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/1.15.4 -o Microsoft.AI.DirectML.nupkg
           mkdir Microsoft.AI.DirectML
           tar -xf Microsoft.AI.DirectML.nupkg -C Microsoft.AI.DirectML
           copy /y Microsoft.AI.DirectML\bin\${{ matrix.arch.arch }}-${{ matrix.arch.os }}\DirectML.dll bin\${{ matrix.arch.name }}\
@@ -164,7 +171,6 @@ jobs:
       # Create Dmg
       - name: Create Dmg
         run: |
-          dotnet msbuild OpenUtau -t:BundleApp -p:Configuration=Release -p:RuntimeIdentifier=${{ matrix.arch.rid }} -p:UseAppHost=true -p:SelfContained=true -p:OutputPath=../bin/${{ matrix.arch.name }}/
           npm install -g create-dmg
           cp OpenUtau/Assets/OpenUtau.icns bin/${{ matrix.arch.name }}/publish/OpenUtau.app/Contents/Resources/
           create-dmg bin/${{ matrix.arch.name }}/publish/OpenUtau.app || true
