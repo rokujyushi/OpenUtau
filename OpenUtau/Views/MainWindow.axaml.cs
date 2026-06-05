@@ -17,7 +17,7 @@ using OpenUtau.App.Controls;
 using OpenUtau.App.ViewModels;
 using OpenUtau.Classic;
 using OpenUtau.Core;
-using OpenUtau.Core.Analysis.Some;
+using OpenUtau.Core.Analysis;
 using OpenUtau.Core.DawIntegration;
 using OpenUtau.Core.DiffSinger;
 using OpenUtau.Core.Format;
