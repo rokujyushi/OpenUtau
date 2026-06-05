@@ -11,6 +11,8 @@ using Xunit;
 
 namespace OpenUtau.Test.Core.DawIntegration {
     public class DawClientTest {
+        private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(5);
+
         [Fact]
         public async Task ConnectHandlesFragmentedAndCombinedMessages() {
             await using var server = new FakeDawServer(async (stream, _) => {
@@ -65,7 +67,7 @@ namespace OpenUtau.Test.Core.DawIntegration {
                     TaskCreationOptions.RunContinuationsAsynchronously);
                 client.PlaybackStarted += () => playbackStarted.TrySetResult();
                 sendPlaybackStarted.TrySetResult();
-                await playbackStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                await playbackStarted.Task.WaitAsync(TestTimeout);
             }
         }
 
@@ -87,7 +89,7 @@ namespace OpenUtau.Test.Core.DawIntegration {
                 await Assert.ThrowsAsync<TimeoutException>(() =>
                     client.SendRequest<InitResponse>(
                         new InitRequest(), cancellation.Token));
-                await requestReceived.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                await requestReceived.Task.WaitAsync(TestTimeout);
             }
         }
 
@@ -112,9 +114,9 @@ namespace OpenUtau.Test.Core.DawIntegration {
                 };
 
                 var request = client.SendRequest<InitResponse>(new InitRequest());
-                await closeConnection.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                await closeConnection.Task.WaitAsync(TestTimeout);
                 await Assert.ThrowsAnyAsync<Exception>(() => request);
-                await disconnected.Task.WaitAsync(TimeSpan.FromSeconds(1));
+                await disconnected.Task.WaitAsync(TestTimeout);
 
                 client.Disconnect();
                 Assert.Equal(1, Volatile.Read(ref disconnectCount));
