@@ -53,7 +53,7 @@ namespace OpenUtau.App.ViewModels {
             {
                 if (IsConnectedToDaw)
                 {
-                    return $"{AppVersion} [{DawManager.Inst.dawClient!.server.Name}] (Attached to DAW)";
+                    return $"{AppVersion} [{DawManager.Inst.Client!.server.Name}] (Attached to DAW)";
                 }
                 else
                 {
@@ -65,7 +65,7 @@ namespace OpenUtau.App.ViewModels {
                 }
             }
         }
-        public bool IsConnectedToDaw => DawManager.Inst.dawClient != null;
+        public bool IsConnectedToDaw => DawManager.Inst.IsConnected;
         /// <summary>
         ///0: welcome page, 1: tracks page
         /// </summary>

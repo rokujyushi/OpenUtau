@@ -31,12 +31,12 @@ namespace OpenUtau.App.ViewModels {
             }
             try {
                 CanConnect = false;
-                var (client, ustx) = await DawClient.Connect(SelectedServer);
+                var ustx = await DawManager.Inst.Connect(SelectedServer);
 
                 if (ustx.Length > 0) {
                     DocManager.Inst.ExecuteCmd(new LoadProjectNotification(Core.Format.Ustx.LoadText(ustx)));
                 }
-                DawManager.Inst.dawClient = client;
+                await DawManager.Inst.Synchronize();
             } finally {
                 CanConnect = true;
             }

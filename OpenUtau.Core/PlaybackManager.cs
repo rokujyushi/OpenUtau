@@ -405,7 +405,7 @@ namespace OpenUtau.Core {
             }
             if (cmd is PreRenderNotification || cmd is LoadProjectNotification) {
                 // Always prerender when it's connected to daw
-                if (Util.Preferences.Default.PreRender || DawManager.Inst.dawClient != null) {
+                if (Util.Preferences.Default.PreRender || DawManager.Inst.IsConnected) {
                     SchedulePreRender();
                 }
             }
