@@ -30,11 +30,11 @@ jobs:
       fail-fast: false
       matrix:
         arch:
-          - { name: win-x64, rid: win-x64, arch: x64, os: win, runs-on: windows-latest, daw-plugin: true }
+          - { name: win-x64, rid: win-x64, arch: x64, cmake-arch: x64, os: win, runs-on: windows-latest, daw-plugin: true }
           - { name: win-x86, rid: win-x86, arch: x86, os: win, runs-on: windows-latest, daw-plugin: false }
-          - { name: win-arm64, rid: win-arm64, arch: arm64, os: win, runs-on: windows-latest, daw-plugin: true }
-          - { name: osx-x64, rid: osx-x64, arch: x64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
-          - { name: osx-arm64, rid: osx-arm64, arch: arm64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
+          - { name: win-arm64, rid: win-arm64, arch: arm64, cmake-arch: ARM64, os: win, runs-on: windows-latest, daw-plugin: true }
+          - { name: osx-x64, rid: osx-x64, arch: x64, cmake-arch: x86_64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
+          - { name: osx-arm64, rid: osx-arm64, arch: arm64, cmake-arch: arm64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
           - { name: linux-x64, rid: linux-x64, arch: x64, os: linux, runs-on: ubuntu-latest, linuxarch: x86_64, daw-plugin: true }
           - { name: linux-arm64, rid: linux-arm64, arch: arm64, os: linux, runs-on: ubuntu-latest, linuxarch: aarch64, daw-plugin: true }
 
@@ -76,7 +76,19 @@ jobs:
       - name: Build Daw Plugin (Windows)
         run: |
           cd ./DawPlugin
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+          New-Item -ItemType Directory -Force deps/dpf/khronos/GL, deps/dpf/khronos/KHR
+          curl.exe --fail --location --retry 5 --retry-all-errors `
+            https://registry.khronos.org/OpenGL/api/GL/glext.h `
+            --output deps/dpf/khronos/GL/glext.h
+          curl.exe --fail --location --retry 5 --retry-all-errors `
+            https://registry.khronos.org/EGL/api/KHR/khrplatform.h `
+            --output deps/dpf/khronos/KHR/khrplatform.h
+          if (-not (Select-String -Quiet -Path deps/dpf/khronos/GL/glext.h -Pattern "PFNGLACTIVETEXTUREPROC")) {
+            throw "Downloaded glext.h is invalid."
+          }
+
+          cmake -B build -S . -A ${{ matrix.arch.cmake-arch }} -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release
         if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'win' }}
 
@@ -84,14 +96,10 @@ jobs:
         run: |
           cd ./DawPlugin
 
-          brew install llvm
-          export PATH="/usr/local/opt/llvm/bin:$PATH"
-          export LDFLAGS="-L/usr/local/opt/llvm/lib/c++ -L/usr/local/opt/llvm/lib -L/usr/local/opt/llvm/lib/unwind -lunwind -fexperimental-library"
-          export CPPFLAGS="-I/usr/local/opt/llvm/include  -fexperimental-library"
-
           cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
-             -DCMAKE_C_COMPILER=/usr/local/opt/llvm/bin/clang -DCMAKE_CXX_COMPILER=/usr/local/opt/llvm/bin/clang++ \
-             -DCMAKE_CXX_FLAGS="-stdlib=libc++ -fexperimental-library"
+             -DCMAKE_C_COMPILER="$(xcrun --find clang)" \
+             -DCMAKE_CXX_COMPILER="$(xcrun --find clang++)" \
+             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch.cmake-arch }}
           cmake --build build --config Release
         if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
 
