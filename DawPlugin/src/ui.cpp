@@ -5,6 +5,7 @@
 #include "dpf_widgets/opengl/DearImGui/imgui.h"
 #include "noto_sans/noto_sans.hpp"
 #include "plugin.hpp"
+#include <algorithm>
 #include <string>
 
 START_NAMESPACE_DISTRHO
@@ -54,6 +55,7 @@ protected:
     ImGui::SetNextWindowSize(ImVec2(getWidth(), getHeight()));
 
     auto plugin = getPlugin();
+    auto snapshot = plugin->getUiSnapshot();
 
     auto &style = ImGui::GetStyle();
 
@@ -76,24 +78,37 @@ protected:
     ImGui::InputText("##plugin-name", nameBuffer, sizeof(nameBuffer));
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       setState("name", nameBuffer);
-      plugin->name = nameBuffer;
+      plugin->setPluginName(nameBuffer);
     } else if (!(ImGui::IsItemActive() &&
                  ImGui::TempInputIsActive(ImGui::GetActiveID()))) {
 #if CHOC_WINDOWS
-      strncpy_s(nameBuffer, plugin->name.c_str(), sizeof(nameBuffer));
+      strncpy_s(nameBuffer, snapshot.name.c_str(), sizeof(nameBuffer));
 #else
-      strncpy(nameBuffer, plugin->name.c_str(), sizeof(nameBuffer));
+      strncpy(nameBuffer, snapshot.name.c_str(), sizeof(nameBuffer));
 #endif
     }
 
     partiallyColoredText(
-        std::format("Plugin identifier: [{} ({})]", plugin->name, plugin->port),
+        std::format("Plugin identifier: [{} ({})]", snapshot.name,
+                    snapshot.port),
         themePinkColor);
 
+    const char *connectionLabel = "Disconnected";
+    ImVec4 connectionColor = style.Colors[ImGuiCol_TextDisabled];
+    if (snapshot.connectionState ==
+        OpenUtauPlugin::ConnectionState::Connected) {
+      connectionLabel = "Connected";
+      connectionColor = themePinkColor;
+    } else if (snapshot.connectionState ==
+               OpenUtauPlugin::ConnectionState::Error) {
+      connectionLabel = "Error";
+      connectionColor = themeBlueColor;
+    }
     partiallyColoredText(
-        std::format("Connected: [{}]", plugin->connected ? "Yes" : "No"),
-        plugin->connected ? themePinkColor
-                          : style.Colors[ImGuiCol_TextDisabled]);
+        std::format("Connection: [{}]", connectionLabel), connectionColor);
+    if (!snapshot.lastError.empty()) {
+      ImGui::TextWrapped("Last error: %s", snapshot.lastError.c_str());
+    }
 
 #ifdef DEBUG
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_D))) {
@@ -107,13 +122,13 @@ protected:
     ImGui::Text("Last audio sync: ");
     ImGui::SameLine(0, 0);
 
-    if (plugin->isProcessing()) {
+    if (snapshot.processing) {
       ImGui::TextColored(themeBlueColor, "Processing");
     } else {
-      if (plugin->lastSync) {
+      if (snapshot.lastSync) {
         long lastSyncDuration =
             std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now() - *plugin->lastSync)
+                std::chrono::system_clock::now() - *snapshot.lastSync)
                 .count();
         if (lastSyncDuration > 60) {
           ImGui::Text("%ldm ago", lastSyncDuration / 60);
@@ -125,7 +140,7 @@ protected:
       }
     }
 
-    if (plugin->tracks.size() > 0) {
+    if (!snapshot.tracks.empty()) {
       ImGui::Spacing();
       ImGui::TextColored(themePinkColor, "Track Mapping:");
       if (ImGui::BeginTable("##track_mapping",
@@ -140,22 +155,24 @@ protected:
                                   style.FramePadding.x * 4 + fontSize * 2);
         }
         ImGui::TableHeadersRow();
-        for (int i = 0; i < plugin->outputMap.size(); i++) {
+        const auto mappingCount =
+            std::min(snapshot.tracks.size(), snapshot.outputMap.size());
+        for (size_t i = 0; i < mappingCount; i++) {
           ImGui::TableNextRow();
           for (int lr = 0; lr < 2; lr++) {
             ImGui::TableNextColumn();
-            ImGui::Text("%s: %s", plugin->tracks[i].name.c_str(),
+            ImGui::Text("%s: %s", snapshot.tracks[i].name.c_str(),
                         lr == 0 ? "L" : "R");
             for (int j = 0; j < DISTRHO_PLUGIN_NUM_OUTPUTS; j += 2) {
               ImGui::TableNextColumn();
               bool leftValue;
               bool rightValue;
               if (lr == 0) {
-                leftValue = plugin->outputMap[i].first[j];
-                rightValue = plugin->outputMap[i].first[j + 1];
+                leftValue = snapshot.outputMap[i].first[j];
+                rightValue = snapshot.outputMap[i].first[j + 1];
               } else {
-                leftValue = plugin->outputMap[i].second[j];
-                rightValue = plugin->outputMap[i].second[j + 1];
+                leftValue = snapshot.outputMap[i].second[j];
+                rightValue = snapshot.outputMap[i].second[j + 1];
               }
 
               bool leftCheckboxChanged = ImGui::Checkbox(
@@ -174,7 +191,7 @@ protected:
                 ImGui::SetTooltip("Channel %d, Right", j / 2 + 1);
               }
               if (leftCheckboxChanged || rightCheckboxChanged) {
-                auto newOutputMap = plugin->outputMap;
+                auto newOutputMap = snapshot.outputMap;
                 if (lr == 0) {
                   newOutputMap[i].first[j] = leftValue;
                   newOutputMap[i].first[j + 1] = rightValue;
@@ -182,9 +199,9 @@ protected:
                   newOutputMap[i].second[j] = leftValue;
                   newOutputMap[i].second[j + 1] = rightValue;
                 }
-                setState("outputMap",
+                setState("mapping",
                          Structures::serializeOutputMap(newOutputMap).c_str());
-                plugin->outputMap = newOutputMap;
+                plugin->setOutputMap(newOutputMap);
               }
             }
           }
@@ -198,7 +215,7 @@ protected:
           "2. Click ['File'] > ['Connect to DAW...'] in OpenUtau",
           themePinkColor);
       partiallyColoredText(std::format("3. Select ['{} ({})'] in the list",
-                                       plugin->name, plugin->port),
+                                       snapshot.name, snapshot.port),
                            themePinkColor);
     }
 

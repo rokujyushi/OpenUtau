@@ -10,15 +10,16 @@
 #include "dpf/distrho/extra/String.hpp"
 #include "gzip/compress.hpp"
 #include "uuid/v4/uuid.h"
+#include <array>
 #include <cfloat>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <future>
 #include <set>
 #include <shared_mutex>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace Network {
@@ -86,8 +87,8 @@ OpenUtauPlugin::OpenUtauPlugin()
 
   setState("name", uuid.c_str());
 
-  this->connected = false;
-
+  this->resampleThread =
+      std::jthread([this](std::stop_token st) { resampleWorkerLoop(st); });
   initializeNetwork();
 }
 OpenUtauPlugin::~OpenUtauPlugin() {
@@ -99,21 +100,15 @@ OpenUtauPlugin::~OpenUtauPlugin() {
     std::filesystem::remove(this->socketPath);
   }
 
+  this->shuttingDown = true;
   if (this->acceptor != nullptr) {
-    this->acceptor->close();
+    asio::error_code error;
+    this->acceptor->close(error);
   }
-  if (this->acceptorThread != nullptr) {
-    this->acceptorThread->request_stop();
-  }
-  for (auto &[_, thread] : this->threads) {
-    thread.request_stop();
-  }
-  for (auto &[_, thread] : this->threads) {
-    thread.join();
-  }
-  while (this->connected) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-  }
+  closeActiveSocket();
+  this->connectionThread.request_stop();
+  this->resampleThread.request_stop();
+  this->resampleRequestCondition.notify_all();
 }
 
 const char *OpenUtauPlugin::getLabel() const {
@@ -172,13 +167,17 @@ String OpenUtauPlugin::getState(const char *rawKey) const {
   std::string key(rawKey);
 
   if (key == "name") {
+    auto _lock = std::lock_guard(this->stateMutex);
     return String(name.c_str());
   } else if (key == "uuid") {
+    auto _lock = std::lock_guard(this->stateMutex);
     return String(uuid.c_str());
   } else if (key == "ustx") {
+    auto _lock = std::lock_guard(this->stateMutex);
     std::string encoded = choc::base64::encodeToString(ustx);
     return String(encoded.c_str());
   } else if (key == "audios") {
+    auto _lock = std::shared_lock(this->audioBuffersMutex);
     choc::value::Value value = choc::value::createObject("");
     for (const auto &[audioHash, audio] : audioBuffers) {
       std::string compressed =
@@ -189,6 +188,7 @@ String OpenUtauPlugin::getState(const char *rawKey) const {
 
     return String(choc::json::toString(value).c_str());
   } else if (key == "parts") {
+    auto _lock = std::shared_lock(this->partsMutex);
     choc::value::Value value = choc::value::createEmptyArray();
     for (const auto &[trackNo, parts] : parts) {
       for (const auto &part : parts) {
@@ -197,8 +197,10 @@ String OpenUtauPlugin::getState(const char *rawKey) const {
     }
     return String(choc::json::toString(value).c_str());
   } else if (key == "tracks") {
+    auto _lock = std::shared_lock(this->tracksMutex);
     return String(Structures::serializeTracks(tracks).c_str());
   } else if (key == "mapping") {
+    auto _lock = std::shared_lock(this->tracksMutex);
     return String(Structures::serializeOutputMap(outputMap).c_str());
   }
   return String();
@@ -207,11 +209,12 @@ String OpenUtauPlugin::getState(const char *rawKey) const {
 void OpenUtauPlugin::setState(const char *rawKey, const char *value) {
   std::string key(rawKey);
   if (key == "name") {
-    this->name = value;
-    this->updatePluginServerFile();
+    setPluginName(value);
   } else if (key == "uuid") {
+    auto _lock = std::lock_guard(this->stateMutex);
     this->uuid = value;
   } else if (key == "ustx") {
+    auto _lock = std::lock_guard(this->stateMutex);
     this->ustx = Utils::unBase64ToString(value);
   } else if (key == "audios") {
     choc::value::Value audioValue = choc::json::parse(value);
@@ -234,7 +237,7 @@ void OpenUtauPlugin::setState(const char *rawKey, const char *value) {
       auto _lock = std::lock_guard(this->audioBuffersMutex);
       this->audioBuffers = audioBuffers;
     }
-    this->requestResampleMixes(this->currentSampleRate);
+    this->requestResampleMixes(this->currentSampleRate.load());
   } else if (key == "parts") {
     choc::value::Value partsValue = choc::json::parse(value);
     std::map<int, std::vector<Part>> parts;
@@ -249,12 +252,12 @@ void OpenUtauPlugin::setState(const char *rawKey, const char *value) {
       auto _lock = std::lock_guard(this->partsMutex);
       this->parts = parts;
     }
-    this->requestResampleMixes(this->currentSampleRate);
+    this->requestResampleMixes(this->currentSampleRate.load());
   } else if (key == "tracks") {
     auto _lock = std::lock_guard(this->tracksMutex);
     this->tracks = Structures::deserializeTracks(value);
   } else if (key == "mapping") {
-    this->outputMap = Structures::deserializeOutputMap(value);
+    setOutputMap(Structures::deserializeOutputMap(value));
   }
 }
 
@@ -285,6 +288,10 @@ void OpenUtauPlugin::run(const float **inputs, float **outputs, uint32_t frames,
                          const MidiEvent *midiEvents, uint32_t midiEventCount) {
 
   auto timePosition = this->getTimePosition();
+  const bool wasPlaying = this->wasPlaying.exchange(timePosition.playing);
+  if (timePosition.playing && !wasPlaying) {
+    this->playbackStartedPending.store(true);
+  }
 
   for (uint32_t i = 0; i < DISTRHO_PLUGIN_NUM_OUTPUTS; ++i) {
     for (uint32_t j = 0; j < frames; ++j) {
@@ -293,9 +300,10 @@ void OpenUtauPlugin::run(const float **inputs, float **outputs, uint32_t frames,
   }
 
   auto sampleRate = getSampleRate();
-  auto lock = std::shared_lock(this->mixMutex, std::defer_lock);
-  if (this->mixes.size() > 0 && timePosition.playing && lock.try_lock()) {
-    if (this->currentSampleRate == sampleRate) {
+  auto mixLock = std::shared_lock(this->mixMutex, std::defer_lock);
+  auto tracksLock = std::shared_lock(this->tracksMutex, std::defer_lock);
+  if (timePosition.playing && mixLock.try_lock() && tracksLock.try_lock()) {
+    if (this->currentSampleRate.load() == sampleRate) {
       for (uint32_t j = 0; j < mixes.size(); ++j) {
         if (j >= this->outputMap.size()) {
           break;
@@ -347,7 +355,7 @@ void OpenUtauPlugin::run(const float **inputs, float **outputs, uint32_t frames,
         }
       }
     } else {
-      requestResampleMixes(sampleRate);
+      requestResampleMixes(sampleRate, false);
     }
   }
 };
@@ -355,163 +363,245 @@ void OpenUtauPlugin::run(const float **inputs, float **outputs, uint32_t frames,
 void OpenUtauPlugin::sampleRateChanged(double newSampleRate) {
   requestResampleMixes(newSampleRate);
 }
+
 void OpenUtauPlugin::onAccept(OpenUtauPlugin *self,
                               const asio::error_code &error,
                               asio::ip::tcp::socket socket) {
-  if (!error) {
-    self->willAccept();
-    if (!self->connected) {
-      self->connected = true;
-      self->acceptorThread = std::make_unique<std::jthread>(
-          [self, socket = std::make_shared<asio::ip::tcp::socket>(
-                     std::move(socket))](std::stop_token st) mutable {
-            std::string messageBuffer;
-            char buffer[16 * 1024];
-            std::promise<size_t> readPromise;
-            auto readFuture = readPromise.get_future();
-            bool timeout = false;
-            try {
-              while (!st.stop_requested()) {
-                if (!timeout) {
-                  readPromise = std::promise<size_t>();
-                  readFuture = readPromise.get_future();
-                  socket->async_read_some(
-                      asio::buffer(buffer),
-                      [&](const asio::error_code &error, size_t len) {
-                        if (error) {
-                          readPromise.set_exception(
-                              std::make_exception_ptr<asio::system_error>(
-                                  error));
-                        } else {
-                          readPromise.set_value(len);
-                        }
-                      });
-                }
-                if (st.stop_requested()) {
-                  break;
-                }
-                if (readFuture.wait_for(std::chrono::seconds(1)) ==
-                    std::future_status::timeout) {
-                  timeout = true;
-                } else {
-                  timeout = false;
-                  auto result = readFuture.get();
-                  auto len = result;
-                  messageBuffer.append(buffer, len);
-
-                  size_t pos;
-                  while ((pos = messageBuffer.find('\n')) !=
-                         std::string::npos) {
-                    std::string message = messageBuffer.substr(0, pos);
-                    messageBuffer.erase(0, pos + 1);
-                    if (message == "close") {
-                      socket->close();
-                      self->connected = false;
-                      return;
-                    }
-
-                    size_t sep = message.find(' ');
-                    std::string header = message.substr(0, sep);
-                    std::string payload = message.substr(sep + 1);
-
-                    size_t firstColon = header.find(':');
-
-                    std::string messageType = header.substr(0, firstColon);
-                    choc::value::Value value = choc::json::parse(payload);
-
-                    if (messageType == "request") {
-                      size_t secondColon = header.find(':', firstColon + 1);
-
-                      std::string messageId = header.substr(
-                          firstColon + 1, secondColon - firstColon - 1);
-                      std::string requestType = header.substr(secondColon + 1);
-
-                      self->threads[messageId] =
-                          std::jthread([self, socket, messageId, requestType,
-                                        value](std::stop_token st) mutable {
-                            choc::value::Value responseObj =
-                                choc::value::createObject("");
-                            try {
-                              auto response =
-                                  self->onRequest(requestType, value);
-                              responseObj.setMember("success", true);
-                              responseObj.setMember("data", response);
-                            } catch (std::exception &e) {
-                              responseObj.setMember("success", false);
-                              responseObj.setMember("error", e.what());
-                            }
-
-                            auto responseString = formatMessage(
-                                std::format("response:{}", messageId),
-                                responseObj);
-                            socket->write_some(asio::buffer(responseString));
-
-                            self->threads[messageId].detach();
-                            self->threads.erase(messageId);
-                          });
-                    } else if (messageType == "notification") {
-                      std::string notificationType =
-                          header.substr(firstColon + 1);
-                      auto messageId = uuid::v4::UUID::New().String();
-                      self->threads[messageId] = std::jthread(
-                          [self, socket, messageId, notificationType,
-                           value](std::stop_token st) mutable {
-                            self->onNotification(notificationType, value);
-
-                            self->threads[messageId].detach();
-                            self->threads.erase(messageId);
-                          });
-                    }
-                  }
-                }
-
-                auto currentTime = std::chrono::system_clock::now();
-                if (currentTime - self->lastPing > std::chrono::seconds(5)) {
-                  socket->write_some(asio::buffer(formatMessage(
-                      "notification:ping", choc::value::createObject(""))));
-                  self->lastPing = currentTime;
-                }
-              }
-            } catch (asio::system_error &e) {
-              // ignore
-            }
-            try {
-              socket->close();
-            } catch (asio::system_error &e) {
-              // ignore
-            }
-
-            self->connected = false;
-          });
-    } else {
-      socket.close();
-    }
+  if (self->shuttingDown) {
+    return;
   }
+  self->willAccept();
+  if (error) {
+    if (error != asio::error::operation_aborted) {
+      self->setConnectionState(ConnectionState::Error, error.message());
+    }
+    return;
+  }
+
+  auto socketPtr =
+      std::make_shared<asio::ip::tcp::socket>(std::move(socket));
+  {
+    auto lock = std::lock_guard(self->connectionMutex);
+    if (self->activeSocket != nullptr) {
+      asio::error_code closeError;
+      socketPtr->close(closeError);
+      return;
+    }
+    self->activeSocket = socketPtr;
+  }
+
+  if (self->connectionThread.joinable()) {
+    self->connectionThread.join();
+  }
+  self->connectionThread = std::jthread(
+      [self, socketPtr](std::stop_token st) {
+        self->connectionLoop(st, socketPtr);
+      });
 }
 
 void OpenUtauPlugin::willAccept() {
+  if (this->shuttingDown || this->acceptor == nullptr ||
+      !this->acceptor->is_open()) {
+    return;
+  }
   acceptor->async_accept(std::bind(&OpenUtauPlugin::onAccept, this,
                                    std::placeholders::_1,
                                    std::placeholders::_2));
 }
 
+void OpenUtauPlugin::connectionLoop(
+    std::stop_token stopToken,
+  std::shared_ptr<asio::ip::tcp::socket> socket) {
+  setConnectionState(ConnectionState::Connected);
+  std::string disconnectError;
+  asio::error_code nonBlockingError;
+  socket->non_blocking(true, nonBlockingError);
+  if (nonBlockingError) {
+    disconnectError = nonBlockingError.message();
+  } else {
+    std::string messageBuffer;
+    std::array<char, 16 * 1024> buffer;
+    std::jthread heartbeatThread(
+        [this, socket](std::stop_token heartbeatStopToken) {
+          int heartbeatTicks = 0;
+          while (!heartbeatStopToken.stop_requested() &&
+                 !this->shuttingDown) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (heartbeatStopToken.stop_requested() || this->shuttingDown) {
+              return;
+            }
+            try {
+              if (this->playbackStartedPending.exchange(false)) {
+                sendMessage(socket,
+                            formatMessage("notification:playbackStarted",
+                                          choc::value::createObject("")));
+              }
+              if (++heartbeatTicks >= 50) {
+                heartbeatTicks = 0;
+                sendMessage(socket,
+                            formatMessage("notification:ping",
+                                          choc::value::createObject("")));
+              }
+            } catch (const std::exception &) {
+              asio::error_code error;
+              socket->close(error);
+              return;
+            }
+          }
+        });
+
+    while (!stopToken.stop_requested() && !this->shuttingDown) {
+      asio::error_code error;
+      const auto len = socket->read_some(asio::buffer(buffer), error);
+      if (!error) {
+        if (len == 0) {
+          disconnectError = "Connection closed by OpenUtau";
+          break;
+        }
+        messageBuffer.append(buffer.data(), len);
+        size_t pos;
+        while ((pos = messageBuffer.find('\n')) != std::string::npos) {
+          auto message = messageBuffer.substr(0, pos);
+          messageBuffer.erase(0, pos + 1);
+          if (message == "close") {
+            disconnectError.clear();
+            goto connection_finished;
+          }
+          try {
+            processMessage(message, socket);
+          } catch (const std::exception &e) {
+            disconnectError = e.what();
+            goto connection_finished;
+          }
+        }
+      } else if (error != asio::error::would_block &&
+                 error != asio::error::try_again) {
+        if (error != asio::error::operation_aborted) {
+          disconnectError = error.message();
+        }
+        break;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
+connection_finished:
+  {
+    auto lock = std::lock_guard(this->connectionMutex);
+    if (this->activeSocket == socket) {
+      this->activeSocket.reset();
+    }
+  }
+  asio::error_code closeError;
+  socket->close(closeError);
+  if (this->shuttingDown || stopToken.stop_requested() ||
+      disconnectError.empty()) {
+    setConnectionState(ConnectionState::Disconnected);
+  } else {
+    setConnectionState(ConnectionState::Error, disconnectError);
+  }
+}
+
+void OpenUtauPlugin::processMessage(
+    const std::string &message,
+    const std::shared_ptr<asio::ip::tcp::socket> &socket) {
+  const auto separator = message.find(' ');
+  if (separator == std::string::npos) {
+    throw std::runtime_error("Malformed message: missing payload");
+  }
+  const auto header = message.substr(0, separator);
+  const auto payload = choc::json::parse(message.substr(separator + 1));
+  const auto firstColon = header.find(':');
+  if (firstColon == std::string::npos) {
+    throw std::runtime_error("Malformed message header");
+  }
+
+  const auto messageType = header.substr(0, firstColon);
+  if (messageType == "request") {
+    const auto secondColon = header.find(':', firstColon + 1);
+    if (secondColon == std::string::npos) {
+      throw std::runtime_error("Malformed request header");
+    }
+    const auto messageId =
+        header.substr(firstColon + 1, secondColon - firstColon - 1);
+    const auto requestType = header.substr(secondColon + 1);
+    auto responseObject = choc::value::createObject("");
+    try {
+      responseObject.setMember("success", true);
+      responseObject.setMember("data", onRequest(requestType, payload));
+    } catch (const std::exception &e) {
+      responseObject.setMember("success", false);
+      responseObject.setMember("error", e.what());
+    }
+    sendMessage(socket, formatMessage(std::format("response:{}", messageId),
+                                      responseObject));
+  } else if (messageType == "notification") {
+    onNotification(header.substr(firstColon + 1), payload);
+  } else {
+    throw std::runtime_error("Unknown message type");
+  }
+}
+
+void OpenUtauPlugin::sendMessage(
+    const std::shared_ptr<asio::ip::tcp::socket> &socket,
+    const std::string &message) {
+  auto lock = std::lock_guard(this->socketWriteMutex);
+  asio::error_code error;
+  asio::write(*socket, asio::buffer(message), error);
+  if (error) {
+    throw asio::system_error(error);
+  }
+}
+
+void OpenUtauPlugin::closeActiveSocket() {
+  std::shared_ptr<asio::ip::tcp::socket> socket;
+  {
+    auto lock = std::lock_guard(this->connectionMutex);
+    socket = std::exchange(this->activeSocket, nullptr);
+  }
+  if (socket != nullptr) {
+    asio::error_code error;
+    socket->shutdown(asio::ip::tcp::socket::shutdown_both, error);
+    socket->close(error);
+  }
+}
+
+void OpenUtauPlugin::setConnectionState(ConnectionState state,
+                                         const std::string &error) {
+  auto lock = std::lock_guard(this->stateMutex);
+  this->connectionState = state;
+  this->lastError = error;
+}
+
 void OpenUtauPlugin::initializeNetwork() {
   this->acceptor = std::make_unique<asio::ip::tcp::acceptor>(
       Network::getIoContext()->get_executor(),
-      asio::ip::tcp::endpoint(asio::ip::address::from_string("127.0.0.1"), 0));
+      asio::ip::tcp::endpoint(asio::ip::make_address("127.0.0.1"), 0));
 
-  auto port = this->acceptor->local_endpoint().port();
-  this->port = port;
+  {
+    auto lock = std::lock_guard(this->stateMutex);
+    this->port = this->acceptor->local_endpoint().port();
+  }
   updatePluginServerFile();
   willAccept();
 }
 
 void OpenUtauPlugin::updatePluginServerFile() {
+  int port;
+  std::string name;
+  std::string uuid;
+  {
+    auto lock = std::lock_guard(this->stateMutex);
+    port = this->port;
+    name = this->name;
+    uuid = this->uuid;
+  }
   std::filesystem::path tempPath = std::filesystem::temp_directory_path();
   std::filesystem::path socketPath = tempPath / "OpenUtau" / "PluginServers" /
-                                     std::format("{}.json", this->uuid);
+                                     std::format("{}.json", uuid);
   std::string socketContent = choc::json::toString(
-      choc::value::createObject("", "port", port, "name", this->name));
+      choc::value::createObject("", "port", port, "name", name));
 
   std::filesystem::create_directories(socketPath.parent_path());
   std::ofstream socketFile(socketPath);
@@ -524,11 +614,11 @@ void OpenUtauPlugin::updatePluginServerFile() {
 choc::value::Value OpenUtauPlugin::onRequest(const std::string kind,
                                              const choc::value::Value payload) {
   if (kind == "init") {
+    auto _lock = std::lock_guard(this->stateMutex);
     choc::value::Value response =
         choc::value::createObject("", "ustx", this->ustx);
     return response;
   } else if (kind == "updatePartLayout") {
-    auto _lock = std::lock_guard(this->partMutex);
     std::map<int, std::vector<Part>> parts;
     std::vector<Part> flatParts;
     std::set<AudioHash> hashes;
@@ -548,20 +638,22 @@ choc::value::Value OpenUtauPlugin::onRequest(const std::string kind,
       auto _lock = std::lock_guard(this->partsMutex);
       this->parts = parts;
     }
-    std::set<AudioHash> toRemove;
     std::set<AudioHash> toAdd;
-    for (const auto &hash : this->audioBuffers) {
-      if (hashes.find(hash.first) == hashes.end()) {
-        toRemove.insert(hash.first);
+    {
+      auto _lock = std::unique_lock(this->audioBuffersMutex);
+      for (auto it = this->audioBuffers.begin();
+           it != this->audioBuffers.end();) {
+        if (!hashes.contains(it->first)) {
+          it = this->audioBuffers.erase(it);
+        } else {
+          ++it;
+        }
       }
-    }
-    for (const auto &hash : hashes) {
-      if (this->audioBuffers.find(hash) == this->audioBuffers.end()) {
-        toAdd.insert(hash);
+      for (const auto &hash : hashes) {
+        if (!this->audioBuffers.contains(hash)) {
+          toAdd.insert(hash);
+        }
       }
-    }
-    for (const auto &hash : toRemove) {
-      this->audioBuffers.erase(hash);
     }
 
     choc::value::Value response = choc::value::createObject("");
@@ -571,9 +663,10 @@ choc::value::Value OpenUtauPlugin::onRequest(const std::string kind,
     }
     response.setMember("missingAudios", missingAudios);
 
-    this->requestResampleMixes(this->currentSampleRate);
+    this->requestResampleMixes(this->currentSampleRate.load());
 
     if (toAdd.size() == 0) {
+      auto _lock = std::lock_guard(this->stateMutex);
       this->lastSync = std::chrono::system_clock::now();
     }
 
@@ -620,72 +713,117 @@ void OpenUtauPlugin::onNotification(const std::string kind,
       this->audioBuffers = audioBuffers;
     }
 
-    this->lastSync = std::chrono::system_clock::now();
-    this->requestResampleMixes(this->currentSampleRate);
+    {
+      auto _lock = std::lock_guard(this->stateMutex);
+      this->lastSync = std::chrono::system_clock::now();
+    }
+    this->requestResampleMixes(this->currentSampleRate.load());
   }
 }
 
 void OpenUtauPlugin::syncMapping() {
+  Structures::OutputMap newOutputMap;
   {
-    auto _lock = std::shared_lock(this->tracksMutex);
-
-    auto tracks = this->tracks;
-    auto outputMap = this->outputMap;
-    if (tracks.size() < outputMap.size()) {
-      outputMap.resize(tracks.size());
-    } else if (tracks.size() > outputMap.size()) {
-      for (size_t i = outputMap.size(); i < tracks.size(); ++i) {
+    auto _lock = std::unique_lock(this->tracksMutex);
+    newOutputMap = this->outputMap;
+    if (tracks.size() < newOutputMap.size()) {
+      newOutputMap.resize(tracks.size());
+    } else if (tracks.size() > newOutputMap.size()) {
+      for (size_t i = newOutputMap.size(); i < tracks.size(); ++i) {
         auto leftChannel = std::bitset<DISTRHO_PLUGIN_NUM_OUTPUTS>();
         auto rightChannel = std::bitset<DISTRHO_PLUGIN_NUM_OUTPUTS>();
         leftChannel[0] = true;
         rightChannel[1] = true;
 
-        outputMap.push_back({leftChannel, rightChannel});
+        newOutputMap.push_back({leftChannel, rightChannel});
       }
     }
-
-    this->outputMap = outputMap;
+    this->outputMap = newOutputMap;
   }
-  setState("mapping", Structures::serializeOutputMap(outputMap).c_str());
+  setState("mapping", Structures::serializeOutputMap(newOutputMap).c_str());
 }
 
-void OpenUtauPlugin::requestResampleMixes(double newSampleRate) {
-  auto uuid = uuid::v4::UUID::New().String();
-  this->threads[uuid] = std::jthread([this, uuid, newSampleRate]() {
-    this->resampleMixes(newSampleRate);
-    this->threads[uuid].detach();
-    this->threads.erase(uuid);
-  });
+void OpenUtauPlugin::requestResampleMixes(double newSampleRate, bool force) {
+  {
+    auto lock = std::lock_guard(this->resampleRequestMutex);
+    if (!force && this->requestedSampleRate == newSampleRate &&
+        this->requestedResampleGeneration > 0) {
+      return;
+    }
+    this->requestedSampleRate = newSampleRate;
+    ++this->requestedResampleGeneration;
+  }
+  this->resampleRequestCondition.notify_one();
 }
 
-void OpenUtauPlugin::resampleMixes(double newSampleRate) {
-  auto _lock = std::unique_lock(this->mixMutex);
-  this->mixMutexLocked = true;
-  auto _lock2 = std::shared_lock(this->audioBuffersMutex);
-  auto _lock3 = std::shared_lock(this->partsMutex);
+void OpenUtauPlugin::resampleWorkerLoop(std::stop_token stopToken) {
+  uint64_t completedGeneration = 0;
+  while (!stopToken.stop_requested()) {
+    double sampleRate;
+    uint64_t generation;
+    {
+      auto lock = std::unique_lock(this->resampleRequestMutex);
+      this->resampleRequestCondition.wait(
+          lock, stopToken, [&] {
+            return this->requestedResampleGeneration > completedGeneration;
+          });
+      if (stopToken.stop_requested()) {
+        return;
+      }
+      sampleRate = this->requestedSampleRate;
+      generation = this->requestedResampleGeneration;
+    }
+    resampleMixes(sampleRate, generation);
+    completedGeneration = generation;
+  }
+}
+
+void OpenUtauPlugin::resampleMixes(double newSampleRate,
+                                   uint64_t generation) {
+  this->mixMutexLocked.store(true);
+  std::map<AudioHash, std::vector<float>> audioBuffers;
+  std::map<int, std::vector<Part>> parts;
+  {
+    auto lock = std::shared_lock(this->audioBuffersMutex);
+    audioBuffers = this->audioBuffers;
+  }
+  {
+    auto lock = std::shared_lock(this->partsMutex);
+    parts = this->parts;
+  }
 
   std::vector<std::pair<std::vector<float>, std::vector<float>>> mixes;
-  for (const auto &[_, parts] : this->parts) {
+  for (const auto &[trackNo, trackParts] : parts) {
+    if (trackNo < 0) {
+      continue;
+    }
     std::vector<float> resampledLeft;
     std::vector<float> resampledRight;
+    if (mixes.size() <= static_cast<size_t>(trackNo)) {
+      mixes.resize(static_cast<size_t>(trackNo) + 1);
+    }
+    if (trackParts.empty()) {
+      continue;
+    }
     auto maxEndMs = std::max_element(
-        parts.begin(), parts.end(),
+        trackParts.begin(), trackParts.end(),
         [](const Part &a, const Part &b) { return a.endMs < b.endMs; });
     resampledLeft.resize((size_t)(maxEndMs->endMs / 1000.0 * newSampleRate) +
                          1);
     resampledRight.resize((size_t)(maxEndMs->endMs / 1000.0 * newSampleRate) +
                           1);
-    for (const auto &part : parts) {
+    for (const auto &part : trackParts) {
       if (!part.hash.has_value()) {
         continue;
       }
       auto startFrame = (size_t)(part.startMs / 1000.0 * newSampleRate);
       auto endFrame = (size_t)(part.endMs / 1000.0 * newSampleRate);
       auto rate = 44100.0 / newSampleRate;
-      if (audioBuffers.find(part.hash.value()) == audioBuffers.end()) {
+      const auto audio = audioBuffers.find(part.hash.value());
+      if (audio == audioBuffers.end()) {
         continue;
       }
-      auto &buffer = audioBuffers[part.hash.value()];
+      const auto &buffer = audio->second;
 
       for (size_t i = startFrame; i < endFrame; ++i) {
         auto frame = (size_t)((i - startFrame) * rate);
@@ -718,11 +856,22 @@ void OpenUtauPlugin::resampleMixes(double newSampleRate) {
       }
     }
 
-    mixes.push_back({resampledLeft, resampledRight});
+    mixes[trackNo] = {std::move(resampledLeft), std::move(resampledRight)};
   }
-  this->mixes = mixes;
-  this->currentSampleRate = newSampleRate;
-  this->mixMutexLocked = false;
+
+  {
+    auto requestLock = std::lock_guard(this->resampleRequestMutex);
+    if (generation != this->requestedResampleGeneration) {
+      this->mixMutexLocked.store(false);
+      return;
+    }
+  }
+  {
+    auto mixLock = std::unique_lock(this->mixMutex);
+    this->mixes = std::move(mixes);
+    this->currentSampleRate.store(newSampleRate);
+  }
+  this->mixMutexLocked.store(false);
 }
 
 std::string
@@ -732,12 +881,37 @@ OpenUtauPlugin::formatMessage(const std::string &kind,
   return std::format("{} {}\n", kind, json);
 }
 
-bool OpenUtauPlugin::isProcessing() {
-  // Doing try_lock() and unlock() causes some flickering in the UI, so use
-  // flag instead. I know it's not the best practice, but this is only for a
-  // UI, which does not affect the audio processing nor causes some critical
-  // issues.
-  return this->mixMutexLocked;
+OpenUtauPlugin::UiSnapshot OpenUtauPlugin::getUiSnapshot() const {
+  UiSnapshot snapshot;
+  {
+    auto lock = std::lock_guard(this->stateMutex);
+    snapshot.port = this->port;
+    snapshot.connectionState = this->connectionState;
+    snapshot.name = this->name;
+    snapshot.lastError = this->lastError;
+    snapshot.lastSync = this->lastSync;
+  }
+  {
+    auto lock = std::shared_lock(this->tracksMutex);
+    snapshot.tracks = this->tracks;
+    snapshot.outputMap = this->outputMap;
+  }
+  snapshot.processing = this->mixMutexLocked.load();
+  return snapshot;
+}
+
+void OpenUtauPlugin::setPluginName(const std::string &newName) {
+  {
+    auto lock = std::lock_guard(this->stateMutex);
+    this->name = newName;
+  }
+  updatePluginServerFile();
+}
+
+void OpenUtauPlugin::setOutputMap(
+    const Structures::OutputMap &newOutputMap) {
+  auto lock = std::unique_lock(this->tracksMutex);
+  this->outputMap = newOutputMap;
 }
 
 // ------------------------------------------------------------------------------------------------------------
