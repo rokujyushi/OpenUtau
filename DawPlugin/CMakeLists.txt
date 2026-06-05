@@ -62,6 +62,7 @@ dpf_add_plugin(
     vst3 au
   UI_TYPE
     opengl
+  USE_FILE_BROWSER
   FILES_COMMON
     src/common.cpp
   FILES_DSP
@@ -81,6 +82,7 @@ target_include_directories(
   ${PROJECT_NAME}
   PUBLIC "src"
          "deps"
+         "deps/choc"
          "deps/dpf/dgl"
          "deps/dpf/distrho"
          "deps/asio/asio/include"
