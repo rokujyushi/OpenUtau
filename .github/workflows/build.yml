@@ -1,3 +1,5 @@
+name: Build OpenUtau
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +21,9 @@ on:
         default: true
         description: "Draft"
 
+permissions:
+  contents: write
+
 env:
   release-name: ${{ inputs.version }}${{ inputs.beta && ' Beta' || '' }}
 
@@ -30,13 +35,13 @@ jobs:
       fail-fast: false
       matrix:
         arch:
-          - { name: win-x64, rid: win-x64, arch: x64, cmake-arch: x64, os: win, runs-on: windows-latest, daw-plugin: true }
-          - { name: win-x86, rid: win-x86, arch: x86, os: win, runs-on: windows-latest, daw-plugin: false }
-          - { name: win-arm64, rid: win-arm64, arch: arm64, cmake-arch: ARM64, os: win, runs-on: windows-latest, daw-plugin: true }
-          - { name: osx-x64, rid: osx-x64, arch: x64, cmake-arch: x86_64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
-          - { name: osx-arm64, rid: osx-arm64, arch: arm64, cmake-arch: arm64, os: osx, runs-on: macos-15-intel, daw-plugin: true }
-          - { name: linux-x64, rid: linux-x64, arch: x64, os: linux, runs-on: ubuntu-latest, linuxarch: x86_64, daw-plugin: true }
-          - { name: linux-arm64, rid: linux-arm64, arch: arm64, os: linux, runs-on: ubuntu-latest, linuxarch: aarch64, daw-plugin: true }
+          - { name: win-x64, rid: win-x64, arch: x64, os: win, runs-on: windows-latest }
+          - { name: win-x86, rid: win-x86, arch: x86, os: win, runs-on: windows-latest }
+          - { name: win-arm64, rid: win-arm64, arch: arm64, os: win, runs-on: windows-latest }
+          - { name: osx-x64, rid: osx-x64, arch: x64, os: osx, runs-on: macos-15-intel }
+          - { name: osx-arm64, rid: osx-arm64, arch: arm64, os: osx, runs-on: macos-15-intel }
+          - { name: linux-x64, rid: linux-x64, arch: x64, os: linux, runs-on: ubuntu-latest, linuxarch: x86_64 }
+          - { name: linux-arm64, rid: linux-arm64, arch: arm64, os: linux, runs-on: ubuntu-latest, linuxarch: aarch64 }
 
     steps:
       # Setup
@@ -70,70 +75,6 @@ jobs:
       - name: Build (Windows and Linux)
         run: dotnet publish OpenUtau -c Release -r ${{ matrix.arch.rid }} --self-contained true -o bin/${{ matrix.arch.name }}/
         if: ${{ matrix.arch.os != 'osx' }}
-
-      # Build: Daw Plugin
-
-      - name: Build Daw Plugin (Windows)
-        run: |
-          cd ./DawPlugin
-
-          New-Item -ItemType Directory -Force deps/dpf/khronos/GL, deps/dpf/khronos/KHR
-          curl.exe --fail --location --retry 5 --retry-all-errors `
-            https://raw.githubusercontent.com/KhronosGroup/OpenGL-Registry/main/api/GL/glext.h `
-            --output deps/dpf/khronos/GL/glext.h
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to download glext.h."
-          }
-          curl.exe --fail --location --retry 5 --retry-all-errors `
-            https://raw.githubusercontent.com/KhronosGroup/EGL-Registry/main/api/KHR/khrplatform.h `
-            --output deps/dpf/khronos/KHR/khrplatform.h
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to download khrplatform.h."
-          }
-          if (-not (Select-String -Quiet -Path deps/dpf/khronos/GL/glext.h -Pattern "PFNGLACTIVETEXTUREPROC")) {
-            throw "Downloaded glext.h is invalid."
-          }
-
-          cmake -B build -S . -A ${{ matrix.arch.cmake-arch }} -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release
-        if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'win' }}
-
-      - name: Build Daw Plugin (Mac)
-        run: |
-          cd ./DawPlugin
-
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
-             -DCMAKE_C_COMPILER="$(xcrun --find clang)" \
-             -DCMAKE_CXX_COMPILER="$(xcrun --find clang++)" \
-             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch.cmake-arch }}
-          cmake --build build --config Release
-        if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
-
-      - name: Build Daw Plugin (Linux)
-        run: |
-          cd ./DawPlugin
-
-          # Install OpenGL
-          sudo apt-get install libgl1-mesa-dev
-
-          cmake -B build -S . -DCMAKE_BUILD_TYPE=Release \
-             -DCMAKE_C_COMPILER=gcc-14 -DCMAKE_CXX_COMPILER=g++-14
-          cmake --build build --config Release
-        if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'linux' }}
-
-      - name: Package Daw Plugin
-        shell: bash
-        run: |
-          cd DawPlugin/build/bin
-          7z a openutau_daw_plugin-${{ matrix.arch.name }}.vst3.zip openutau_daw_plugin.vst3
-        if: ${{ matrix.arch.daw-plugin }}
-
-      - name: Package Daw Plugin (Mac)
-        shell: bash
-        run: |
-          cd DawPlugin/build/bin
-          7z a openutau_daw_plugin-${{ matrix.arch.name }}.au.zip openutau_daw_plugin.component
-        if: ${{ matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
 
       - name: Build (MacOS)
         run: dotnet msbuild OpenUtau -t:BundleApp -p:Configuration=Release -p:RuntimeIdentifier=${{ matrix.arch.rid }} -p:UseAppHost=true -p:SelfContained=true -p:OutputPath=../bin/${{ matrix.arch.name }}/
@@ -241,18 +182,6 @@ jobs:
           path: OpenUtau-${{ matrix.arch.name }}.dmg
         if: ${{ !inputs.release && matrix.arch.os == 'osx' }}
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openutau_daw_plugin-${{ matrix.arch.name }}.vst3.zip
-          path: DawPlugin/build/bin/openutau_daw_plugin-${{ matrix.arch.name }}.vst3.zip
-        if: ${{ !inputs.release && matrix.arch.daw-plugin }}
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: openutau_daw_plugin-${{ matrix.arch.name }}.au.zip
-          path: DawPlugin/build/bin/openutau_daw_plugin-${{ matrix.arch.name }}.au.zip
-        if: ${{ !inputs.release && matrix.arch.daw-plugin && matrix.arch.os == 'osx' }}
-
       # Appcast
       - name: Appcast Windows
         shell: cmd
@@ -282,8 +211,6 @@ jobs:
           files: |
             appcast.${{ matrix.arch.name }}*.xml
             OpenUtau-${{ matrix.arch.name }}.*
-            DawPlugin/build/bin/openutau_daw_plugin-${{ matrix.arch.name }}.vst3.zip
-            DawPlugin/build/bin/openutau_daw_plugin-${{ matrix.arch.name }}.au.zip
           body: |
             See [Getting Started](https://github.com/stakira/OpenUtau/wiki/Getting-Started) for how to use.
 
@@ -292,3 +219,12 @@ jobs:
             ## macOS says "This app is damaged"
             Open a terminal and run `xattr -rc /Applications/OpenUtau.app`. Try opening OpenUtau again.
         if: ${{ inputs.release }}
+
+  daw-plugin:
+    needs: build
+    uses: ./.github/workflows/build-daw-plugin.yml
+    with:
+      version: ${{ inputs.version }}
+      release: ${{ inputs.release }}
+      beta: ${{ inputs.beta }}
+      draft: ${{ inputs.draft }}
