@@ -6,7 +6,7 @@
 	url = https://github.com/chriskohlhoff/asio
 [submodule "DawPlugin/deps/dpf_widgets"]
 	path = DawPlugin/deps/dpf_widgets
-	url = https://github.com/sevenc-nanashi/DPF-Widgets.git
+	url = https://github.com/rokujyushi/DPF-Widgets.git
 [submodule "DawPlugin/deps/choc"]
 	path = DawPlugin/deps/choc
 	url = https://github.com/Tracktion/choc
