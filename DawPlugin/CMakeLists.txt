@@ -59,6 +59,12 @@ endif()
 # Disable DGL's default font
 add_definitions(-DDGL_NO_SHARED_RESOURCES=1)
 
+# DPF does not currently recognize MSVC's uppercase "ARM64" architecture ID.
+# Use the package architecture name required by the VST3 bundle layout.
+if(MSVC AND MSVC_CXX_ARCHITECTURE_ID STREQUAL "ARM64")
+  set(DPF_VST3_ARCHITECTURE "arm64")
+endif()
+
 dpf_add_plugin(
   ${PROJECT_NAME}
   TARGETS
