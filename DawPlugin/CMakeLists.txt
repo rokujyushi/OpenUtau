@@ -44,8 +44,12 @@ if(MSVC)
   add_definitions(-DIMGUI_ENABLE_WIN32_DEFAULT_IME_FUNCTIONS)
 endif()
 
-# MacOS only: use -Wno-implicit-function-declaration for zlib
+# macOS only:
+# - Enable libc++ C++20 stop_token/jthread support
+# - Use -Wno-implicit-function-declaration for zlib
 if(APPLE)
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:-fexperimental-library>)
+  add_link_options(-fexperimental-library)
   add_compile_options("-Wno-implicit-function-declaration")
 endif()
 
