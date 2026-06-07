@@ -250,20 +250,24 @@ namespace OpenUtau.Core.Hts {
                     if (prev >= 0) {
                         if (htsPhonemes[prev].type.Equals("v")) {
                             htsPhonemes[i].prev_vowel_distance = 1;
-                        } else {
+                        } else if (htsPhonemes[prev].prev_vowel_distance > 0) {
                             htsPhonemes[i].prev_vowel_distance = htsPhonemes[prev].prev_vowel_distance + 1;
+                        } else {
+                            htsPhonemes[i].prev_vowel_distance = 0;
                         }
                     }
                 }
             }
-            for (int i = htsPhonemes.Length - 1; i > 0; --i) {
+            for (int i = htsPhonemes.Length - 1; i >= 0; --i) {
                 if (htsPhonemes[i].type.Equals("c")) {
                     int next = i + 1;
                     if (next < htsPhonemes.Length) {
                         if (htsPhonemes[next].type.Equals("v")) {
                             htsPhonemes[i].next_vowel_distance = 1;
-                        } else {
+                        } else if (htsPhonemes[next].next_vowel_distance > 0) {
                             htsPhonemes[i].next_vowel_distance = htsPhonemes[next].next_vowel_distance + 1;
+                        } else {
+                            htsPhonemes[i].next_vowel_distance = 0;
                         }
                     }
                 }
