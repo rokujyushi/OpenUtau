@@ -9,7 +9,6 @@ using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using OpenUtau.Core.Util.nnmnkwii.io.hts;
 using Serilog;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace OpenUtau.Core.Hts {
     public abstract class HTSLabelPhonemizer : MachineLearningPhonemizer {
