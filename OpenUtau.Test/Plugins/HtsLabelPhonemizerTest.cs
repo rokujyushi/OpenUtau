@@ -22,6 +22,7 @@ namespace OpenUtau.Plugins {
         public string GeneratedFullScorePath => fullScorePath;
         public string GeneratedMonoTimingPath => monoTimingPath;
         public string GeneratedTempPath => htstmpPath;
+        public bool DictionaryLoadedBeforeG2p { get; private set; }
 
         public DummyHtsLabelPhonemizer() {
             // Minimal language and symbol classes
@@ -30,9 +31,11 @@ namespace OpenUtau.Plugins {
             pauses = new List<string> { "pau" };
             silences = new List<string> { "sil" };
             breaks = new List<string> { "br" };
+            tablePath = "oto.ini";
         }
 
         protected override IG2p LoadG2p(string rootPath) {
+            DictionaryLoadedBeforeG2p = phoneDict.Count > 0;
             // Provide a tiny JP-like dictionary: simple CV mapping.
             var builder = G2pDictionary.NewBuilder();
             // vowels
@@ -124,6 +127,13 @@ namespace OpenUtau.Plugins {
         [InlineData(new string[] { "ka", "+~a", "ki" }, new string[] { "k", "a", "k", "i" })]
         public void BasicHtsPipelineTest(string[] lyrics, string[] aliases) {
             SameAltsTonesColorsTest("en_delta0", lyrics, aliases, "", "C4", "");
+        }
+
+        [Fact]
+        public void DictionaryIsLoadedBeforeG2p() {
+            var phonemizer = CreateConfiguredPhonemizer(new[] { "a" });
+
+            Assert.True(phonemizer.DictionaryLoadedBeforeG2p);
         }
 
         [Fact]

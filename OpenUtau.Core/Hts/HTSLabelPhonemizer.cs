@@ -59,20 +59,20 @@ namespace OpenUtau.Core.Hts {
             } else {
                 rootPath = singer.Location;
             }
-            //Load g2p from enunux.yaml
-            //g2p dict should be load after enunu dict
-            try {
-                g2p = LoadG2p(rootPath);
-            } catch (Exception e) {
-                Log.Error(e, "failed to load g2p dictionary");
-                return;
-            }
             //Load Dictionary
             var enunuDictPath = Path.Join(rootPath, tablePath);
             try {
                 LoadDict(Path.Join(rootPath, tablePath), singer.TextFileEncoding);
             } catch (Exception e) {
                 Log.Error(e, $"failed to load dictionary from {enunuDictPath}");
+                return;
+            }
+            //Load g2p from enunux.yaml
+            //g2p dict should be load after enunu dict
+            try {
+                g2p = LoadG2p(rootPath);
+            } catch (Exception e) {
+                Log.Error(e, "failed to load g2p dictionary");
                 return;
             }
         }
