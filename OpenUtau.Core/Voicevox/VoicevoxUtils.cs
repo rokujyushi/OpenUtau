@@ -2,8 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using OpenUtau.Core.Render;
 using Serilog;
 
@@ -181,15 +180,13 @@ namespace OpenUtau.Core.Voicevox {
         public static Phoneme_list phoneme_List = new Phoneme_list();
 
         public static VoicevoxSynthParams VoicevoxVoiceBase(VoicevoxQueryMain qNotes, string id) {
-            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_audio_query", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(qNotes) };
+            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_audio_query", query = new Dictionary<string, string> { { "speaker", id } }, body = Json.Serialize(qNotes) };
             var response = VoicevoxClient.Inst.SendRequest(queryurl);
-            VoicevoxSynthParams vvNotes;
-            var jObj = JObject.Parse(response.Item1);
-            if (jObj.ContainsKey("detail")) {
-                Log.Error($"Response was incorrect. : {jObj}");
+            var jObj = JsonObject.Parse(response.Item1);
+            if (jObj?.AsObject().ContainsKey("detail") == true) {
+                Log.Error($"Response was incorrect. : {jObj["detail"]}");
             } else {
-                vvNotes = jObj.ToObject<VoicevoxSynthParams>();
-                return vvNotes;
+                return Json.Deserialize<VoicevoxSynthParams>(jObj);
             }
             return new VoicevoxSynthParams();
         }
@@ -254,28 +251,28 @@ namespace OpenUtau.Core.Voicevox {
 
         public static List<double> QueryToF0(VoicevoxQueryMain vqMain, VoicevoxSynthParams vsParams, string id) {
             VoicevoxQueryParams vqParams = new VoicevoxQueryParams() { score = vqMain, frame_audio_query = vsParams }; 
-            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_f0", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(vqParams) };
+            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_f0", query = new Dictionary<string, string> { { "speaker", id } }, body = Json.Serialize(vqParams) };
             var response = VoicevoxClient.Inst.SendRequest(queryurl);
             List<double> f0s = new List<double>();
-            var jObj = JObject.Parse(response.Item1);
-            if (jObj.ContainsKey("detail")) {
-                Log.Error($"Response was incorrect. : {jObj}");
+            var jObj = JsonObject.Parse(response.Item1);
+            if (jObj?.AsObject().ContainsKey("detail") == true) {
+                Log.Error($"Response was incorrect. : {jObj["detail"]}");
             } else {
-                f0s = jObj["json"].ToObject<List<double>>();
+                f0s = Json.Deserialize<List<double>>(jObj?["json"]);
             }
             return f0s;
         }
 
         public static List<double> QueryToVolume(VoicevoxQueryMain vqMain, VoicevoxSynthParams vsParams, string id) {
             VoicevoxQueryParams vqParams = new VoicevoxQueryParams() { score = vqMain, frame_audio_query = vsParams };
-            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_volume", query = new Dictionary<string, string> { { "speaker", id } }, body = JsonConvert.SerializeObject(vqParams) };
+            var queryurl = new VoicevoxURL() { method = "POST", path = "/sing_frame_volume", query = new Dictionary<string, string> { { "speaker", id } }, body = Json.Serialize(vqParams) };
             var response = VoicevoxClient.Inst.SendRequest(queryurl);
             List<double> volumes = new List<double>();
-            var jObj = JObject.Parse(response.Item1);
-            if (jObj.ContainsKey("detail")) {
-                Log.Error($"Response was incorrect. : {jObj}");
+            var jObj = JsonObject.Parse(response.Item1);
+            if (jObj?.AsObject().ContainsKey("detail") == true) {
+                Log.Error($"Response was incorrect. : {jObj["detail"]}");
             } else {
-                volumes = jObj["json"].ToObject<List<double>>();
+                volumes = Json.Deserialize<List<double>>(jObj?["json"]);
             }
             return volumes;
         }
