@@ -41,7 +41,7 @@ namespace OpenUtau.Core.Voicevox {
         public List<double> f0 = new List<double>();
         public List<double> volume = new List<double>();
         public List<Phonemes> phonemes = new List<Phonemes>();
-        public int volumeScale = 1;
+        public double volumeScale = 1;
         public int outputSamplingRate = 24000;
         public bool outputStereo = false;
 

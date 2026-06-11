@@ -144,7 +144,7 @@ namespace OpenUtau.Core.Voicevox {
         public string url;
         public string icon;
         public int default_sampling_rate;
-        public int frame_rate;
+        public double frame_rate;
         public string terms_of_service;
         public IList<Update_infos> update_infos;
         public IList<Dependency_licenses> dependency_licenses;
