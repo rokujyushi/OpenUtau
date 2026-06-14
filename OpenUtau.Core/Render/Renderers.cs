@@ -15,12 +15,14 @@ namespace OpenUtau.Core.Render {
         public const string VOGEN = "VOGEN";
         public const string DIFFSINGER = "DIFFSINGER";
         public const string VOICEVOX = "VOICEVOX";
+        public const string CUSTOM = "CUSTOM";
 
         static readonly string[] classicRenderers = new[] { WORLDLINE_R, CLASSIC };
         static readonly string[] enunuRenderers = new[] { ENUNU };
         static readonly string[] vogenRenderers = new[] { VOGEN };
         static readonly string[] diffSingerRenderers = new[] { DIFFSINGER };
         static readonly string[] voicevoxRenderers = new[] { VOICEVOX };
+        static readonly string[] customRenderers = new[] { CUSTOM };
         static readonly string[] noRenderers = new string[0];
 
         public static string[] GetSupportedRenderers(USingerType singerType) {
@@ -35,6 +37,8 @@ namespace OpenUtau.Core.Render {
                     return diffSingerRenderers;
                 case USingerType.Voicevox:
                     return voicevoxRenderers;
+                case USingerType.Custom:
+                    return customRenderers;
                 default:
                     return noRenderers;
             }
