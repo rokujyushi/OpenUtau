@@ -18,6 +18,9 @@ namespace OpenUtau.App.ViewModels {
         public int PlayPosTick => DocManager.Inst.playPosTick;
         public TimeSpan PlayPosTime => TimeSpan.FromMilliseconds((int)Project.timeAxis.TickPosToMsPos(DocManager.Inst.playPosTick));
         [Reactive] public bool MetronomeEnabled { get; set; } = Preferences.Default.MetronomeEnabled;
+        public bool HasRangeSelection => DocManager.Inst.rangeEndTick > DocManager.Inst.rangeStartTick;
+        public bool IsPlaying => PlaybackManager.Inst.PlayingMaster;
+        public bool ShowPlayPosHighlight => !IsPlaying || HasRangeSelection;
 
         public PlaybackViewModel() {
             DocManager.Inst.AddSubscriber(this);
@@ -97,11 +100,15 @@ namespace OpenUtau.App.ViewModels {
                 MessageBus.Current.SendMessage(new TimeAxisChangedEvent());
                 if (cmd is LoadProjectNotification) {
                     DocManager.Inst.ExecuteCmd(new SetPlayPosTickNotification(0));
+                    this.RaisePropertyChanged(nameof(ShowPlayPosHighlight));
+                    this.RaisePropertyChanged(nameof(IsPlaying));
                 }
             } else if (cmd is SeekPlayPosTickNotification ||
                 cmd is SetPlayPosTickNotification) {
                 this.RaisePropertyChanged(nameof(PlayPosTick));
                 this.RaisePropertyChanged(nameof(PlayPosTime));
+            } else if (cmd is SetRangeSelectionNotification) {
+                this.RaisePropertyChanged(nameof(ShowPlayPosHighlight));
             }
         }
     }

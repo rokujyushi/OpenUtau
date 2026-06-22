@@ -183,7 +183,6 @@ namespace OpenUtau.App.ViewModels {
             DiffSingerLangCodeHide = Preferences.Default.DiffSingerLangCodeHide;
             SkipRenderingMutedTracks = Preferences.Default.SkipRenderingMutedTracks;
             ThemeName = Preferences.Default.ThemeName;
-            PenPlusDefault = Preferences.Default.PenPlusDefault;
             DegreeStyle = Preferences.Default.DegreeStyle;
             UseTrackColor = Preferences.Default.UseTrackColor;
             ShowPortrait = Preferences.Default.ShowPortrait;
@@ -271,11 +270,6 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Default.PreRender = preRender;
                     Preferences.Save();
                 });
-            this.WhenAnyValue(vm => vm.PenPlusDefault)
-                .Subscribe(penPlusDefault => {
-                    Preferences.Default.PenPlusDefault = penPlusDefault;
-                    Preferences.Save();
-                });
             this.WhenAnyValue(vm => vm.Language)
                 .Subscribe(lang => {
                     Preferences.Default.Language = lang?.Name ?? string.Empty;
@@ -289,7 +283,7 @@ namespace OpenUtau.App.ViewModels {
                 });
             this.WhenAnyValue(vm => vm.ThemeName)
                 .Subscribe(themeName => {
-                    ThemeEditable = themeName != "Light" && themeName != "Dark";
+                    ThemeEditable = themeName != "Light" && themeName != "Dark" && !Colors.CustomTheme.IsPackageTheme(themeName);
                     if (!IsThemeEditorOpen) {
                         Preferences.Default.ThemeName = themeName;
                         Preferences.Save();
@@ -491,6 +485,8 @@ namespace OpenUtau.App.ViewModels {
         }
 
         public void RefreshThemes() {
+            Colors.CustomTheme.ListThemes();
+            _ = OudepLoaderRegistry.LoadAllAsync();
             this.RaisePropertyChanged(nameof(ThemeItems));
         }
 

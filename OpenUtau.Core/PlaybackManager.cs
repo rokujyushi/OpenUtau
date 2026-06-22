@@ -252,6 +252,10 @@ namespace OpenUtau.Core {
         public int StartTick => DocManager.Inst.Project.timeAxis.MsPosToTickPos(startMs);
         CancellationTokenSource renderCancellation;
 
+        // Loop playback state
+        private int loopStartTick = 0;
+        private int loopEndTick = -1;
+
         public Audio.IAudioOutput AudioOutput { get; set; } = new Audio.DummyAudioOutput();
         public bool OutputActive => AudioOutput.PlaybackState == PlaybackState.Playing;
         public bool StartingToPlay { get; private set; }
@@ -333,11 +337,25 @@ namespace OpenUtau.Core {
             if (PlayingMaster) {
                 PausePlayback();
             } else {
-                Play(
-                    DocManager.Inst.Project,
-                    tick: tick == -1 ? DocManager.Inst.playPosTick : tick,
-                    endTick: endTick,
-                    trackNo: trackNo);
+                int rangeStart = DocManager.Inst.rangeStartTick;
+                int rangeEnd = DocManager.Inst.rangeEndTick;
+                if (rangeEnd > rangeStart) {
+                    int playPos = DocManager.Inst.playPosTick;
+                    loopStartTick = rangeStart;
+                    loopEndTick = rangeEnd;
+                    Play(
+                        DocManager.Inst.Project,
+                        tick: tick == -1 ? ((playPos >= rangeStart && playPos < rangeEnd) ? playPos : rangeStart) : tick,
+                        endTick: endTick == -1 ? rangeEnd : endTick,
+                        trackNo: trackNo);
+                } else {
+                    loopEndTick = -1;
+                    Play(
+                        DocManager.Inst.Project,
+                        tick: tick == -1 ? DocManager.Inst.playPosTick : tick,
+                        endTick: endTick,
+                        trackNo: trackNo);
+                }
             }
         }
 
@@ -358,13 +376,16 @@ namespace OpenUtau.Core {
             AudioOutput.Stop();
             masterMix = null;
             PlayingMaster = false;
+
             metronomeEngine.Stop();
+            loopEndTick = -1;
         }
 
         public void PausePlayback() {
             AudioOutput.Pause();
             PlayingMaster = false;
             metronomeEngine.Stop();
+            loopEndTick = -1;
         }
 
         public void PlayMetronome(bool enabled) {
@@ -409,15 +430,21 @@ namespace OpenUtau.Core {
 
         public void UpdatePlayPos() {
             if (AudioOutput != null && AudioOutput.PlaybackState == PlaybackState.Playing && PlayingMaster) {
-                var currentMasterMix = masterMix;
-                if (currentMasterMix == null) {
+
+                double ms = (AudioOutput.GetPosition() / sizeof(float) - masterMix.Waited / 2) * 1000.0 / 44100;
+                int tick = DocManager.Inst.Project.timeAxis.MsPosToTickPos(startMs + ms);
+                if (loopEndTick > 0 && tick >= loopEndTick) {
+                    // Loop back to range start
+                    Play(DocManager.Inst.Project, tick: loopStartTick, endTick: loopEndTick);
                     return;
                 }
-                double ms = (AudioOutput.GetPosition() / sizeof(float) - currentMasterMix.Waited / 2) * 1000.0 / 44100;
-                double currentMs = startMs + ms;
-                var timeAxis = DocManager.Inst.Project.timeAxis;
-                int tick = timeAxis.MsPosToTickPos(currentMs);
-                DocManager.Inst.ExecuteCmd(new SetPlayPosTickNotification(tick, currentMasterMix.IsWaiting));
+                DocManager.Inst.ExecuteCmd(new SetPlayPosTickNotification(tick, masterMix.IsWaiting));
+            } else if (AudioOutput != null && AudioOutput.PlaybackState == PlaybackState.Stopped && PlayingMaster) {
+                // Playback stopped (e.g. silence at end). Check if we should loop.
+                if (loopEndTick > 0) {
+                    Play(DocManager.Inst.Project, tick: loopStartTick, endTick: loopEndTick);
+                    return;
+                }
             }
         }
 

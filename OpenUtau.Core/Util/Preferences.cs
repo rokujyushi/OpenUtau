@@ -150,7 +150,6 @@ namespace OpenUtau.Core.Util {
             public bool ShowPrefs = true;
             public bool ShowTips = true;
             public string ThemeName = "Light";
-            public bool PenPlusDefault = false;
             public int DegreeStyle;
             public bool UseTrackColor = false;
             public bool ClearCacheOnQuit = false;
@@ -193,6 +192,7 @@ namespace OpenUtau.Core.Util {
             public bool ShowPortrait = true;
             public bool ShowIcon = true;
             public bool ShowGhostNotes = true;
+            public EditTool EditTool = new EditTool();
             public bool PlayTone = true;
             public bool ShowVibrato = true;
             public bool ShowPitch = true;
@@ -200,6 +200,7 @@ namespace OpenUtau.Core.Util {
             public bool ShowWaveform = true;
             public bool ShowPhoneme = true;
             public bool ShowExpressions = true;
+            public bool ShowPhonemizerTags = true;
             public bool ShowNoteParams = true;
             public Dictionary<string, string> DefaultResamplers = new Dictionary<string, string>();
             public Dictionary<string, string> DefaultWavtools = new Dictionary<string, string>();
@@ -219,6 +220,8 @@ namespace OpenUtau.Core.Util {
             public bool LockUnselectedNotesPitch = true;
             public bool LockUnselectedNotesVibrato = true;
             public bool LockUnselectedNotesExpressions = true;
+            public bool LyricLivePreview = true;
+            public bool LyricApplySelectionOnly = true;
             public bool VoicebankPublishUseIgnore = true;
             public string VoicebankPublishIgnores = @"#Adobe Audition
 *.pkf
@@ -255,9 +258,25 @@ errors.txt
             public string RecoveryPath = string.Empty;
             public bool DetachPianoRoll = false;
 
+            // ----- Mix FX (post-processing) -----
+            // Per-track FX state lives in UTrack.MixFx and the project ustx.
+            // Preferences only stores the global "apply on mixdown export" toggle
+            // and the user preset library (named full-rack snapshots).
+            public bool MixFxApplyOnExportMixdown = true;
+            public List<MixFxUserPreset> MixFxUserPresets = new List<MixFxUserPreset>();
+
             // Legacy
             [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
             public int? Theme;
+        }
+
+        /// <summary>
+        /// Named full-rack FX snapshot (EQ + Comp + Reverb together).
+        /// Persisted in Preferences so users can save and recall their own presets.
+        /// </summary>
+        public class MixFxUserPreset {
+            public string Name { get; set; } = string.Empty;
+            public Ustx.UMixFx Fx { get; set; } = new Ustx.UMixFx();
         }
     }
 }
