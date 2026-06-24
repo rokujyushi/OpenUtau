@@ -37,6 +37,12 @@ namespace OpenUtau.App.Views {
         private PianoRoll? pianoRoll;
 
         private PartEditState? partEditState;
+
+        // Time range selection state
+        private bool isSelectingRange;
+        private Point rangeSelectStartPoint = default;
+        private const double RangeSelectThreshold = 5; // pixels
+
         private readonly DispatcherTimer timer;
         private readonly DispatcherTimer autosaveTimer;
         private bool forceClose;
@@ -68,7 +74,12 @@ namespace OpenUtau.App.Views {
             timer = new DispatcherTimer(
                 TimeSpan.FromMilliseconds(15),
                 DispatcherPriority.Normal,
-                (sender, args) => PlaybackManager.Inst.UpdatePlayPos());
+                (sender, args) => {
+                    PlaybackManager.Inst.UpdatePlayPos();
+                    var pvm = viewModel.PlaybackViewModel;
+                    pvm.RaisePropertyChanged(nameof(pvm.IsPlaying));
+                    pvm.RaisePropertyChanged(nameof(pvm.ShowPlayPosHighlight));
+                });
             timer.Start();
 
             autosaveTimer = new DispatcherTimer(
@@ -403,6 +414,29 @@ namespace OpenUtau.App.Views {
 
         async void OnMenuExportDsTo(object sender, RoutedEventArgs e) {
             var project = DocManager.Inst.Project;
+            bool allRendered = project.parts
+                .OfType<UVoicePart>()
+                .All(part => part.renderPhrases.Count > 0 &&
+                    part.renderPhrases.All(phrase => {
+                        var hashStr = $"{phrase.hash:x16}";
+                        return Directory.EnumerateFiles(
+                            PathManager.Inst.CachePath, $"*{hashStr}*.wav").Any();
+                    }));
+            if (!allRendered) {
+                await MessageBox.Show(
+                    this,
+                    ThemeManager.GetString("dialogs.exportds.notrendered"),
+                    ThemeManager.GetString("errors.caption"),
+                    MessageBox.MessageBoxButtons.Ok);
+                return;
+            }
+            var vm = new DsScriptExportViewModel();
+            var dialog = new DsScriptExportDialog { DataContext = vm };
+            await dialog.ShowDialog(this);
+            if (!dialog.Confirmed) {
+                return;
+            }
+            var options = vm.BuildOptions();
             var file = await FilePicker.SaveFileAboutProject(
                 this, "menu.file.exportds", FilePicker.DS);
             if (!string.IsNullOrEmpty(file)) {
@@ -410,39 +444,7 @@ namespace OpenUtau.App.Views {
                     var part = project.parts[i];
                     if (part is UVoicePart voicePart) {
                         var savePath = PathManager.Inst.GetPartSavePath(file, voicePart.DisplayName, i)[..^4] + ".ds";
-                        DiffSingerScript.SavePart(project, voicePart, savePath);
-                        DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, $"{savePath}."));
-                    }
-                }
-            }
-        }
-
-        async void OnMenuExportDsV2To(object sender, RoutedEventArgs e) {
-            var project = DocManager.Inst.Project;
-            var file = await FilePicker.SaveFileAboutProject(
-                this, "menu.file.exportds.v2", FilePicker.DS);
-            if (!string.IsNullOrEmpty(file)) {
-                for (var i = 0; i < project.parts.Count; i++) {
-                    var part = project.parts[i];
-                    if (part is UVoicePart voicePart) {
-                        var savePath = PathManager.Inst.GetPartSavePath(file, voicePart.DisplayName, i)[..^4] + ".ds";
-                        DiffSingerScript.SavePart(project, voicePart, savePath, true);
-                        DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, $"{savePath}."));
-                    }
-                }
-            }
-        }
-
-        async void OnMenuExportDsV2WithoutPitchTo(object sender, RoutedEventArgs e) {
-            var project = DocManager.Inst.Project;
-            var file = await FilePicker.SaveFileAboutProject(
-                this, "menu.file.exportds.v2withoutpitch", FilePicker.DS);
-            if (!string.IsNullOrEmpty(file)) {
-                for (var i = 0; i < project.parts.Count; i++) {
-                    var part = project.parts[i];
-                    if (part is UVoicePart voicePart) {
-                        var savePath = PathManager.Inst.GetPartSavePath(file, voicePart.DisplayName, i)[..^4] + ".ds";
-                        DiffSingerScript.SavePart(project, voicePart, savePath, true, false);
+                        DiffSingerScript.SavePart(project, voicePart, savePath, options);
                         DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, $"{savePath}."));
                     }
                 }
@@ -1027,8 +1029,9 @@ namespace OpenUtau.App.Views {
                 viewModel.TracksViewModel.PointToLineTick(point.Position, out int left, out int right);
                 viewModel.PlaybackViewModel.MovePlayPos(left);
             } else if (point.Properties.IsRightButtonPressed) {
-                int tick = viewModel.TracksViewModel.PointToTick(point.Position);
-                viewModel.RefreshTimelineContextMenu(tick);
+                isSelectingRange = true;
+                rangeSelectStartPoint = point.Position;
+                viewModel.RefreshTimelineContextMenu(viewModel.TracksViewModel.PointToTick(point.Position));
             }
         }
 
@@ -1038,12 +1041,39 @@ namespace OpenUtau.App.Views {
             if (point.Properties.IsLeftButtonPressed) {
                 viewModel.TracksViewModel.PointToLineTick(point.Position, out int left, out int right);
                 viewModel.PlaybackViewModel.MovePlayPos(left);
+            } else if (point.Properties.IsRightButtonPressed && isSelectingRange) {
+                double dx = Math.Abs(point.Position.X - rangeSelectStartPoint.X);
+                if (dx >= RangeSelectThreshold) {
+                    UpdateRangeSelection(point.Position);
+                }
             }
             Cursor = null;
         }
 
         public void TimelinePointerReleased(object sender, PointerReleasedEventArgs args) {
+            if (isSelectingRange && args.InitialPressMouseButton == MouseButton.Right) {
+                isSelectingRange = false;
+                var control = (Control)sender;
+                var point = args.GetCurrentPoint(control);
+                double dx = Math.Abs(point.Position.X - rangeSelectStartPoint.X);
+                if (dx >= RangeSelectThreshold) {
+                    UpdateRangeSelection(point.Position);
+                }
+            }
             args.Pointer.Capture(null);
+        }
+
+        public void TimelineDoubleTapped(object sender, TappedEventArgs args) {
+            DocManager.Inst.ExecuteCmd(new SetRangeSelectionNotification(0, 0));
+        }
+
+        private void UpdateRangeSelection(Point currentPoint) {
+            var tracksVm = viewModel.TracksViewModel;
+            tracksVm.PointToLineTick(rangeSelectStartPoint, out int startLeft, out int startRight);
+            tracksVm.PointToLineTick(currentPoint, out int endLeft, out int endRight);
+            int left = Math.Min(startLeft, endLeft);
+            int right = Math.Max(startRight, endRight);
+            DocManager.Inst.ExecuteCmd(new SetRangeSelectionNotification(left, right));
         }
 
         public void PartsCanvasPointerPressed(object sender, PointerPressedEventArgs args) {
@@ -1603,11 +1633,11 @@ namespace OpenUtau.App.Views {
                 int newDuration = Math.Max(leftPart.End, rightPart.End) - newPosition;
                 int deltaPos = rightPart.position - leftPart.position;
                 UVoicePart shiftPart = new UVoicePart();
-                rightPart.notes.ForEach((note) => {
+                foreach (var note in rightPart.notes) {
                     UNote shiftNote = note.Clone();
                     shiftNote.position += deltaPos;
                     shiftPart.notes.Add(shiftNote);
-                });
+                }
                 foreach (var curve in rightPart.curves) {
                     UCurve shiftCurve = curve.Clone();
                     for (var i = 0; i < shiftCurve.xs.Count; i++) {

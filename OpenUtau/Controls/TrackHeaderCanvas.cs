@@ -98,6 +98,15 @@ namespace OpenUtau.App.Controls {
                         }
                     }
                 });
+
+            MessageBus.Current.Listen<MixFxChangedNotification>()
+                .Subscribe(e => {
+                    foreach (var (track, header) in trackHeaders) {
+                        if (header.ViewModel != null && track.TrackNo == e.trackNo) {
+                            header.ViewModel.ManuallyRaise();
+                        }
+                    }
+                });
             MessageBus.Current.Listen<TrackSelectionEvent>()
                 .Subscribe(e => {
                     var selectedTracks = new HashSet<UTrack>(e.selectedTracks);
