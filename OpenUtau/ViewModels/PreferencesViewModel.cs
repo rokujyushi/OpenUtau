@@ -54,6 +54,7 @@ namespace OpenUtau.App.ViewModels {
             get => audioOutputDevice;
             set => this.RaiseAndSetIfChanged(ref audioOutputDevice, value);
         }
+        [Reactive] public bool UseSystemDefaultDevice { get; set; }
         [Reactive] public int PreferPortAudio { get; set; }
         [Reactive] public int LockStartTime { get; set; }
         [Reactive] public int PlaybackAutoScroll { get; set; }
@@ -90,14 +91,18 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public string OnnxRunner { get; set; }
         public List<GpuInfo> OnnxGpuOptions { get; set; }
         [Reactive] public GpuInfo OnnxGpu { get; set; }
-      
+        [Reactive] public bool ShowOnnxGpu { get; set; }
+
         // Appearance
-        [Reactive] public int Theme { get; set; }
+        [Reactive] public string ThemeName { get; set; }
         [Reactive] public int DegreeStyle { get; set; }
         [Reactive] public bool UseTrackColor { get; set; }
         [Reactive] public bool ShowPortrait { get; set; }
         [Reactive] public bool ShowIcon { get; set; }
         [Reactive] public bool ShowGhostNotes { get; set; }
+        [Reactive] public bool ThemeEditable { get; set; }
+        public List<string> ThemeItems => ThemeManager.GetAvailableThemes();
+        public bool IsThemeEditorOpen => Views.ThemeEditorWindow.IsOpen;
 
         // UTAU
         public List<string> DefaultRendererOptions { get; set; }
@@ -140,6 +145,7 @@ namespace OpenUtau.App.ViewModels {
                     AudioOutputDevice = device;
                 }
             }
+            UseSystemDefaultDevice = Preferences.Default.UseSystemDefaultAudioDevice;
             PreferPortAudio = Preferences.Default.PreferPortAudio ? 1 : 0;
             PlaybackAutoScroll = Preferences.Default.PlaybackAutoScroll;
             PlayPosMarkerMargin = Preferences.Default.PlayPosMarkerMargin;
@@ -169,6 +175,7 @@ namespace OpenUtau.App.ViewModels {
                OnnxRunnerOptions[0] : Preferences.Default.OnnxRunner;
             OnnxGpuOptions = Onnx.getGpuInfo();
             OnnxGpu = OnnxGpuOptions.FirstOrDefault(x => x.deviceId == Preferences.Default.OnnxGpu, OnnxGpuOptions[0]);
+            ShowOnnxGpu = OnnxRunner == "DirectML";
             DiffSingerDepth = Preferences.Default.DiffSingerDepth * 100;
             DiffSingerSteps = Preferences.Default.DiffSingerSteps;
             DiffSingerStepsVariance = Preferences.Default.DiffSingerStepsVariance;
@@ -176,8 +183,7 @@ namespace OpenUtau.App.ViewModels {
             DiffSingerTensorCache = Preferences.Default.DiffSingerTensorCache;
             DiffSingerLangCodeHide = Preferences.Default.DiffSingerLangCodeHide;
             SkipRenderingMutedTracks = Preferences.Default.SkipRenderingMutedTracks;
-            Theme = Preferences.Default.Theme;
-            PenPlusDefault = Preferences.Default.PenPlusDefault;
+            ThemeName = Preferences.Default.ThemeName;
             DegreeStyle = Preferences.Default.DegreeStyle;
             UseTrackColor = Preferences.Default.UseTrackColor;
             ShowPortrait = Preferences.Default.ShowPortrait;
@@ -198,10 +204,21 @@ namespace OpenUtau.App.ViewModels {
             ParallelSamplingRate = SamplingRateOptions.FirstOrDefault(x => x == Preferences.Default.ParallelSamplingRate, SamplingRateOptions[0]);
             ClearCacheOnQuit = Preferences.Default.ClearCacheOnQuit;
 
+            MessageBus.Current.Listen<ThemeEditorStateChangedEvent>()
+                .Subscribe(_ => this.RaisePropertyChanged(nameof(IsThemeEditorOpen)));
+            
+            this.WhenAnyValue(vm => vm.UseSystemDefaultDevice)
+                .Subscribe(useDefault => {
+                    Preferences.Default.UseSystemDefaultAudioDevice = useDefault;
+                    Preferences.Save();
+                });
             this.WhenAnyValue(vm => vm.AudioOutputDevice)
                 .WhereNotNull()
                 .SubscribeOn(RxApp.MainThreadScheduler)
                 .Subscribe(device => {
+                    if (UseSystemDefaultDevice) {
+                        return;
+                    }
                     if (PlaybackManager.Inst.AudioOutput != null) {
                         try {
                             PlaybackManager.Inst.AudioOutput.SelectDevice(device.guid, device.deviceNumber);
@@ -245,11 +262,6 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Default.PreRender = preRender;
                     Preferences.Save();
                 });
-            this.WhenAnyValue(vm => vm.PenPlusDefault)
-                .Subscribe(penPlusDefault => {
-                    Preferences.Default.PenPlusDefault = penPlusDefault;
-                    Preferences.Save();
-                });
             this.WhenAnyValue(vm => vm.Language)
                 .Subscribe(lang => {
                     Preferences.Default.Language = lang?.Name ?? string.Empty;
@@ -261,11 +273,14 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Default.SortingOrder = so?.Name ?? null;
                     Preferences.Save();
                 });
-            this.WhenAnyValue(vm => vm.Theme)
-                .Subscribe(theme => {
-                    Preferences.Default.Theme = theme;
-                    Preferences.Save();
-                    App.SetTheme();
+            this.WhenAnyValue(vm => vm.ThemeName)
+                .Subscribe(themeName => {
+                    ThemeEditable = themeName != "Light" && themeName != "Dark" && !Colors.CustomTheme.IsPackageTheme(themeName);
+                    if (!IsThemeEditorOpen) {
+                        Preferences.Default.ThemeName = themeName;
+                        Preferences.Save();
+                        App.SetTheme();
+                    }
                 });
             this.WhenAnyValue(vm => vm.DegreeStyle)
                 .Subscribe(degreeStyle => {
@@ -333,6 +348,7 @@ namespace OpenUtau.App.ViewModels {
                 .Subscribe(index => {
                     Preferences.Default.OnnxRunner = index;
                     Preferences.Save();
+                    ToggleOnnxGpuDisplay(index == "DirectML");
                 });
             this.WhenAnyValue(vm => vm.OnnxGpu)
                 .Subscribe(index => {
@@ -468,6 +484,16 @@ namespace OpenUtau.App.ViewModels {
             Preferences.Save();
             ToolsManager.Inst.Initialize();
             this.RaisePropertyChanged(nameof(WinePath));
+        }
+
+        public void RefreshThemes() {
+            Colors.CustomTheme.ListThemes();
+            _ = OudepLoaderRegistry.LoadAllAsync();
+            this.RaisePropertyChanged(nameof(ThemeItems));
+        }
+
+        public void ToggleOnnxGpuDisplay(bool show) {
+            ShowOnnxGpu = show;
         }
     }
 }

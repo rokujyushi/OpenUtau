@@ -113,6 +113,13 @@ namespace OpenUtau.Core.Util {
                     if (!ValidString(new Action(() => CultureInfo.GetCultureInfo(Default.SortingOrder)))) Default.SortingOrder = string.Empty;
                     if (!Renderers.getRendererOptions().Contains(Default.DefaultRenderer)) Default.DefaultRenderer = string.Empty;
                     if (!Onnx.getRunnerOptions().Contains(Default.OnnxRunner)) Default.OnnxRunner = string.Empty;
+                    if (Default.Theme != null) {
+                        Default.ThemeName = Default.Theme switch {
+                            1 => "Dark",
+                            _ => "Light"
+                        };
+                        Default.Theme = null;
+                    }
                 } else {
                     Reset();
                 }
@@ -133,12 +140,8 @@ namespace OpenUtau.Core.Util {
 
         [Serializable]
         public class SerializablePreferences {
-            public const int MidiWidth = 1024;
-            public const int MidiHeight = 768;
-            public int MainWidth = 1024;
-            public int MainHeight = 768;
-            public bool MainMaximized;
-            public bool MidiMaximized;
+            public WindowSize MainWindowSize = new WindowSize();
+            public WindowSize PianorollWindowSize = new WindowSize();
             public int UndoLimit = 100;
             public List<string> SingerSearchPaths = new List<string>();
             public string PlaybackDevice = string.Empty;
@@ -146,8 +149,7 @@ namespace OpenUtau.Core.Util {
             public int? PlaybackDeviceIndex;
             public bool ShowPrefs = true;
             public bool ShowTips = true;
-            public int Theme;
-            public bool PenPlusDefault = false;
+            public string ThemeName = "Light";
             public int DegreeStyle;
             public bool UseTrackColor = false;
             public bool ClearCacheOnQuit = false;
@@ -178,6 +180,7 @@ namespace OpenUtau.Core.Util {
             public Dictionary<string, string> SingerPhonemizers = new Dictionary<string, string>();
             public List<string> RecentPhonemizers = new List<string>();
             public bool PreferPortAudio = false;
+            public bool UseSystemDefaultAudioDevice = true;
             public double PlayPosMarkerMargin = 0.9;
             public int LockStartTime = 0;
             public int PlaybackAutoScroll = 2;
@@ -185,6 +188,7 @@ namespace OpenUtau.Core.Util {
             public bool ShowPortrait = true;
             public bool ShowIcon = true;
             public bool ShowGhostNotes = true;
+            public EditTool EditTool = new EditTool();
             public bool PlayTone = true;
             public bool ShowVibrato = true;
             public bool ShowPitch = true;
@@ -192,6 +196,7 @@ namespace OpenUtau.Core.Util {
             public bool ShowWaveform = true;
             public bool ShowPhoneme = true;
             public bool ShowExpressions = true;
+            public bool ShowPhonemizerTags = true;
             public bool ShowNoteParams = true;
             public Dictionary<string, string> DefaultResamplers = new Dictionary<string, string>();
             public Dictionary<string, string> DefaultWavtools = new Dictionary<string, string>();
@@ -217,6 +222,8 @@ namespace OpenUtau.Core.Util {
             public bool LockUnselectedNotesPitch = true;
             public bool LockUnselectedNotesVibrato = true;
             public bool LockUnselectedNotesExpressions = true;
+            public bool LyricLivePreview = true;
+            public bool LyricApplySelectionOnly = true;
             public bool VoicebankPublishUseIgnore = true;
             public string VoicebankPublishIgnores = @"#Adobe Audition
 *.pkf
@@ -251,6 +258,27 @@ namespace OpenUtau.Core.Util {
 errors.txt
 ";
             public string RecoveryPath = string.Empty;
+            public bool DetachPianoRoll = false;
+
+            // ----- Mix FX (post-processing) -----
+            // Per-track FX state lives in UTrack.MixFx and the project ustx.
+            // Preferences only stores the global "apply on mixdown export" toggle
+            // and the user preset library (named full-rack snapshots).
+            public bool MixFxApplyOnExportMixdown = true;
+            public List<MixFxUserPreset> MixFxUserPresets = new List<MixFxUserPreset>();
+
+            // Legacy
+            [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+            public int? Theme;
+        }
+
+        /// <summary>
+        /// Named full-rack FX snapshot (EQ + Comp + Reverb together).
+        /// Persisted in Preferences so users can save and recall their own presets.
+        /// </summary>
+        public class MixFxUserPreset {
+            public string Name { get; set; } = string.Empty;
+            public Ustx.UMixFx Fx { get; set; } = new Ustx.UMixFx();
         }
     }
 }
