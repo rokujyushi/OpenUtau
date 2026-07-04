@@ -907,8 +907,10 @@ namespace OpenUtau.App.Views {
             var notesVm = vm.NotesViewModel;
             int snapUnit = notesVm.Project.resolution * 4 / notesVm.SnapDiv;
             int tick = notesVm.PointToTick(point);
+            if (Preferences.Default.DefaultSnapCurve) {
             if (notesVm.IsSnapOn) {
                 tick = (int)Math.Floor((double)tick / snapUnit) * snapUnit;
+            }
             }
             startTick = tick;
         }
