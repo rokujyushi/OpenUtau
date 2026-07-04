@@ -611,7 +611,7 @@
         <ListBox.Items>
           <ListBoxItem Classes="toolbar cursorTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.cursor}"/>
           <ListBoxItem Classes="toolbar penTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.pen}"/>
-          <ListBoxItem Classes="toolbar drawLinePitchTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.line}"/>
+          <ListBoxItem Classes="toolbar pitchLineTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.line}"/>
           <ListBoxItem Classes="toolbar eraserTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.eraser}"/>
           <ListBoxItem Classes="toolbar verticalStretchTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.verticalstretch}"/>
           <ListBoxItem Classes="toolbar horizontalStretchTool" ToolTip.Tip="{DynamicResource pianoroll.tool.curve.horizontalstretch}"/>
