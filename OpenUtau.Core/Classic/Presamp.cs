@@ -231,12 +231,12 @@ namespace Classic {
                         }
                     }
                 }
-                
+
+                MakePhonemeList();
+
             } catch (Exception e) {
                 Log.Error(e, "failed to load presamp.ini");
             }
-
-            MakePhonemeList();
         }
 
         public bool TryGetLinesFromIniBrocks(List<IniBlock> blocks, string header, out List<IniLine> lines) {
