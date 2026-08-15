@@ -49,9 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install NSIS via Chocolatey
-        run: choco install nsis --version=3.11 --no-progress
-        if: ${{ matrix.arch.os == 'win' }}
+        if: ${{ matrix.arch.os == 'osx' }}
       - uses: justalemon/VersionPatcher@v0.7.1
         with:
           version: ${{ inputs.version }}
@@ -88,7 +86,7 @@ jobs:
         if: ${{ matrix.arch.os == 'win' }}
 
       - name: Set executable permission
-        run: chmod +x bin/${{ matrix.arch.name }}/OpenUtau
+        run: chmod +x bin/${{ matrix.arch.name }}/OpenUtau-for-NEUTRINO
         if: ${{ matrix.arch.os == 'linux' }}
 
       - name: Zip
@@ -103,25 +101,12 @@ jobs:
           tar -czf ../../OpenUtau-${{ matrix.arch.name }}.tar.gz *
         if: ${{ matrix.arch.os == 'linux' }}
 
-      # Create Installer
-      - name: Get VC Redist
-        run: |
-          curl https://aka.ms/vs/17/release/vc_redist.${{ matrix.arch.arch }}.exe -o vc_redist.${{ matrix.arch.arch }}.exe
-        if: ${{ matrix.arch.os == 'win' }}
-
-      - name: Create Installer
-        uses: joncloud/makensis-action@v4.1
-        with:
-          script-file: OpenUtau.nsi
-          arguments: "-DPRODUCT_VERSION=${{ inputs.version }} -DARCH=${{ matrix.arch.arch }}"
-        if: ${{ matrix.arch.os == 'win' }}
-
       # Create Dmg
       - name: Create Dmg
         run: |
           npm install -g create-dmg
-          cp OpenUtau/Assets/OpenUtau.icns bin/${{ matrix.arch.name }}/publish/OpenUtau.app/Contents/Resources/
-          create-dmg bin/${{ matrix.arch.name }}/publish/OpenUtau.app || true
+          cp OpenUtau/Assets/OpenUtau.icns bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app/Contents/Resources/
+          create-dmg bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app || true
           mv *.dmg OpenUtau-${{ matrix.arch.name }}.dmg
           codesign -fvs - OpenUtau-${{ matrix.arch.name }}.dmg
         if: ${{ matrix.arch.os == 'osx' }}
@@ -159,12 +144,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenUtau-${{ matrix.arch.name }}.exe
-          path: OpenUtau-${{ matrix.arch.name }}.exe
-        if: ${{ !inputs.release && matrix.arch.os == 'win' }}
-      
-      - uses: actions/upload-artifact@v4
-        with:
           name: OpenUtau-${{ matrix.arch.name }}.AppImage
           path: OpenUtau-${{ matrix.arch.linuxarch }}.AppImage
         if: ${{ !inputs.release && matrix.arch.os == 'linux' }}
@@ -180,7 +159,6 @@ jobs:
         shell: cmd
         run: |
           python appcast.py -v=${{ inputs.version }} -o=windows -r=${{ matrix.arch.name }} -f=OpenUtau-${{ matrix.arch.name }}.zip
-          python appcast.py -v=${{ inputs.version }} -o=windows -r=${{ matrix.arch.name }}-installer -f=OpenUtau-${{ matrix.arch.name }}.exe
         if: ${{ inputs.release && matrix.arch.os == 'win' }}
 
       - name: Appcast MacOS
@@ -210,5 +188,5 @@ jobs:
             If you encountered issues, see [FAQ](https://github.com/stakira/OpenUtau/wiki/FAQ)
 
             ## macOS says "This app is damaged"
-            Open a terminal and run `xattr -rc /Applications/OpenUtau.app`. Try opening OpenUtau again.
+            Open a terminal and run `xattr -rc /Applications/OpenUtau-for-NEUTRINO.app`. Try opening OpenUtau-for-NEUTRINO again.
         if: ${{ inputs.release }}

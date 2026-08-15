@@ -3,8 +3,8 @@
 ManifestDPIAware true
 
 ; HM NIS Edit Wizard helper defines
-!define PRODUCT_NAME "OpenUtau"
-!define PRODUCT_PUBLISHER "stakira"
+!define PRODUCT_NAME "OpenUtau-for-NEUTRINO"
+!define PRODUCT_PUBLISHER "rokujyushi"
 !define PRODUCT_WEB_SITE "https://www.openutau.com"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
@@ -29,7 +29,7 @@ ManifestDPIAware true
 ; Instfiles page
 !insertmacro MUI_PAGE_INSTFILES
 ; Finish page
-!define MUI_FINISHPAGE_RUN "$INSTDIR\OpenUtau.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\OpenUtau-for-NEUTRINO.exe"
 !insertmacro MUI_PAGE_FINISH
 
 ; Uninstaller pages
@@ -48,7 +48,7 @@ ManifestDPIAware true
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
 OutFile "OpenUtau-win-${ARCH}.exe"
-InstallDir "$PROGRAMFILES64\OpenUtau"
+InstallDir "$PROGRAMFILES64\OpenUtau-for-NEUTRINO"
 ShowInstDetails show
 ShowUnInstDetails show
 
@@ -63,8 +63,8 @@ Section "MainSection" SEC01
 SectionEnd
 
 Section -AdditionalIcons
-  CreateShortCut "$SMPROGRAMS\OpenUtau.lnk" "$INSTDIR\OpenUtau.exe"
-  CreateShortCut "$DESKTOP\OpenUtau.lnk" "$INSTDIR\OpenUtau.exe"
+  CreateShortCut "$SMPROGRAMS\OpenUtau-for-NEUTRINO.lnk" "$INSTDIR\OpenUtau-for-NEUTRINO.exe"
+  CreateShortCut "$DESKTOP\OpenUtau-for-NEUTRINO.lnk" "$INSTDIR\OpenUtau-for-NEUTRINO.exe"
 SectionEnd
 
 Section -Post
@@ -76,15 +76,15 @@ Section -Post
   WriteUninstaller "$INSTDIR\uninst.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "$(^Name)"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\uninst.exe"
-  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\OpenUtau.exe"
+  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\OpenUtau-for-NEUTRINO.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
 
-  WriteRegStr HKCR ".ustx" "" "OpenUtauFile"
-  WriteRegStr HKCR "OpenUtauFile" "" "OpenUtau Sequence File"
-  WriteRegStr HKCR "OpenUtauFile\DefaultIcon" "" "$INSTDIR\OpenUtau.exe"
-  WriteRegStr HKCR "OpenUtauFile\shell\open\command" "" '"$INSTDIR\OpenUtau.exe" "%1"'
+  WriteRegStr HKCR ".ustx" "" "OpenUtauForNeutrinoFile"
+  WriteRegStr HKCR "OpenUtauForNeutrinoFile" "" "OpenUtau Sequence File"
+  WriteRegStr HKCR "OpenUtauForNeutrinoFile\DefaultIcon" "" "$INSTDIR\OpenUtau-for-NEUTRINO.exe"
+  WriteRegStr HKCR "OpenUtauForNeutrinoFile\shell\open\command" "" '"$INSTDIR\OpenUtau-for-NEUTRINO.exe" "%1"'
 SectionEnd
 
 Section "VC Redist"
@@ -110,11 +110,11 @@ Section Uninstall
   Delete "$INSTDIR\*"
   RMDir "$INSTDIR"
 
-  Delete "$SMPROGRAMS\OpenUtau.lnk"
-  Delete "$DESKTOP\OpenUtau.lnk"
+  Delete "$SMPROGRAMS\OpenUtau-for-NEUTRINO.lnk"
+  Delete "$DESKTOP\OpenUtau-for-NEUTRINO.lnk"
 
   DeleteRegKey HKCR ".ustx"
-  DeleteRegKey HKCR "OpenUtauFile"
+  DeleteRegKey HKCR "OpenUtauForNeutrinoFile"
 
   DeleteRegKey ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}"
   SetAutoClose true

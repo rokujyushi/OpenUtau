@@ -7,6 +7,8 @@
   </PropertyGroup>
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <AssemblyName>OpenUtau-for-NEUTRINO</AssemblyName>
+    <RootNamespace>OpenUtau</RootNamespace>
     <SatelliteResourceLanguages>none</SatelliteResourceLanguages>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
@@ -17,14 +19,14 @@
     <StartupObject />
   </PropertyGroup>
   <PropertyGroup>
-    <CFBundleName>OpenUtau</CFBundleName>
-    <CFBundleDisplayName>OpenUtau</CFBundleDisplayName>
-    <CFBundleIdentifier>com.stakira.openutau</CFBundleIdentifier>
+    <CFBundleName>OpenUtau-for-NEUTRINO</CFBundleName>
+    <CFBundleDisplayName>OpenUtau-for-NEUTRINO</CFBundleDisplayName>
+    <CFBundleIdentifier>com.rokujyushi.openutau-for-neutrino</CFBundleIdentifier>
     <CFBundleVersion>0.0.0</CFBundleVersion>
     <CFBundleShortVersionString>0.0.0</CFBundleShortVersionString>
     <CFBundlePackageType>APPL</CFBundlePackageType>
     <CFBundleSignature>????</CFBundleSignature>
-    <CFBundleExecutable>OpenUtau</CFBundleExecutable>
+    <CFBundleExecutable>OpenUtau-for-NEUTRINO</CFBundleExecutable>
     <CFBundleIconFile>OpenUtau.icns</CFBundleIconFile>
     <NSPrincipalClass>NSApplication</NSPrincipalClass>
     <NSHighResolutionCapable>true</NSHighResolutionCapable>
@@ -43,7 +45,7 @@
                 <string>Editor</string>
                 <key>LSItemContentTypes</key>
                 <array>
-                    <string>com.stakira.openutau.ustx</string>
+                    <string>com.rokujyushi.openutau-for-neutrino.ustx</string>
                 </array>
             </dict>
         </array>          
