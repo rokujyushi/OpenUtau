@@ -128,6 +128,7 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public bool RememberUst { get; set; }
         [Reactive] public bool RememberVsqx { get; set; }
         public string WinePath => Preferences.Default.WinePath;
+        [Reactive] public bool DefaultSnapCurve { get; set; }
 
         public PreferencesViewModel() {
             var audioOutput = PlaybackManager.Inst.AudioOutput;
@@ -191,6 +192,7 @@ namespace OpenUtau.App.ViewModels {
             RememberMid = Preferences.Default.RememberMid;
             RememberUst = Preferences.Default.RememberUst;
             RememberVsqx = Preferences.Default.RememberVsqx;
+            DefaultSnapCurve = Preferences.Default.DefaultSnapCurve;
             ClearCacheOnQuit = Preferences.Default.ClearCacheOnQuit;
 
             MessageBus.Current.Listen<ThemeEditorStateChangedEvent>()
@@ -357,6 +359,11 @@ namespace OpenUtau.App.ViewModels {
             this.WhenAnyValue(vm => vm.RememberVsqx)
                 .Subscribe(index => {
                     Preferences.Default.RememberVsqx = index;
+                    Preferences.Save();
+                });
+            this.WhenAnyValue(vm => vm.DefaultSnapCurve)
+                .Subscribe(index => {
+                    Preferences.Default.DefaultSnapCurve = index;
                     Preferences.Save();
                 });
             this.WhenAnyValue(vm => vm.ClearCacheOnQuit)
