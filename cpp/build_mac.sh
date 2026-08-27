@@ -2,7 +2,10 @@
 
 build()
 {
-    bazel build //worldline:worldline -c opt $2
+    bazel build //worldline:worldline -c opt $2 \
+        --apple_generate_dsym=false \
+        --repo_env=CC=/usr/bin/clang \
+        --repo_env=CXX=/usr/bin/clang++
     chmod +w bazel-bin/worldline/libworldline.dylib
     cp bazel-bin/worldline/libworldline.dylib ../runtimes/osx/native/libworldline-$1.dylib
 }
