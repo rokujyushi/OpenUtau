@@ -258,6 +258,11 @@ namespace OpenUtau.Core.Neutrino {
                                 } else {
                                     ProcessRunner.Run(NsfExe, ArgParam, Log.Logger);
                                 }
+                                if (!File.Exists(wavPath)) {
+                                    Log.Error($"NEUTRINO produced no wav at {wavPath}. args: {ArgParam}");
+                                    result.samples = new float[0];
+                                    return result;
+                                }
                                 using (var waveStream = new WaveFileReader(wavPath)) {
                                     result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
                                 }
@@ -285,10 +290,13 @@ namespace OpenUtau.Core.Neutrino {
                                     float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
                                     float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
                                     ArgParam = $"\"{f0Path}\" \"{mgcPath}\" \"{bapPath}\" \"{wavPath}\" -n 1 -m {gender} -b {breathiness} -t";
-                                    if (File.Exists(VocoderClientExe)) {
-                                        ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
-                                    } else {
+                                    // vocoder_server only speaks NSF. Handing it the WORLD
+                                    // arguments kills the server, so always run WORLD directly.
                                         ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
+                                    if (!File.Exists(wavPath)) {
+                                        Log.Error($"NEUTRINO produced no wav at {wavPath}. args: {ArgParam}");
+                                        result.samples = new float[0];
+                                        return result;
                                     }
                                     using (var waveStream = new WaveFileReader(wavPath)) {
                                         result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
@@ -384,6 +392,11 @@ namespace OpenUtau.Core.Neutrino {
                                 ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
                             } else {
                                 ProcessRunner.Run(NeutrinoExe, ArgParam, Log.Logger);
+                            }
+                            if (!File.Exists(wavPath)) {
+                                Log.Error($"NEUTRINO produced no wav at {wavPath}. args: {ArgParam}");
+                                result.samples = new float[0];
+                                return result;
                             }
                             using (var waveStream = new WaveFileReader(wavPath)) {
                                 result.samples = Wave.GetSamples(waveStream.ToSampleProvider());
