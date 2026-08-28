@@ -76,6 +76,8 @@ namespace OpenUtau.Core.Neutrino {
         string VocoderServerExe = string.Empty;
         bool existNeutrinoClient = false;
         int sampleRate = 48000;
+        // NEUTRINO version the executable paths and dictionary were resolved for.
+        NeutrinoVersion setUpVersion = NeutrinoVersion.Unsupported;
 
         NeutrinoVersion Version => NeutrinoUtils.DetectVersion(this.singer.singerVersion);
 
@@ -116,6 +118,7 @@ namespace OpenUtau.Core.Neutrino {
             Log.Debug(String.IsNullOrEmpty(WorldExe) ? $"No WorldExe" : $"WorldExe: {WorldExe}");
             NeutrinoServerLauncher.EnsureStarted(NeutrinoServerExe);
             NeutrinoServerLauncher.EnsureStarted(VocoderServerExe, 23456);
+            setUpVersion = Version;
         }
 
         protected override HTSPhoneme[] CustomHTSPhonemeContext(HTSPhoneme[] htsPhonemes, RenderNote notes) {
@@ -178,7 +181,9 @@ namespace OpenUtau.Core.Neutrino {
                     string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
                     this.singer = phrase.singer as NeutrinoSinger;
-                    if (g2p == null || string.IsNullOrEmpty(NeutrinoExe)) {
+                    // The renderer instance is reused for the whole track, so switching the
+                    // singer to another NEUTRINO version must re-resolve the paths and dictionary.
+                    if (g2p == null || string.IsNullOrEmpty(NeutrinoExe) || setUpVersion != Version) {
                         SetUp();
                     }
                     var result = Layout(phrase);
