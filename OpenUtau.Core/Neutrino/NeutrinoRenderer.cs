@@ -242,7 +242,7 @@ namespace OpenUtau.Core.Neutrino {
                             }
                             if (!File.Exists(wavPath) && File.Exists(f0Path) && File.Exists(melspecPath)) {
                                 if (phrase.phones[0].direct) {
-                                    ArgParam = $"\"{f0Path}\" \"{melspecPath}\" \"{modelDir}{nsf}.bin\" \"{wavPath}\" -l \"{monoTimingPath}\" -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
+                                    ArgParam = $"\"{f0Path}\" \"{melspecPath}\" \"{modelDir}{nsf}.bin\" \"{wavPath}\" -l \"{monoTimingPath}\" -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -m -t";
                                 } else {
                                     double[] f0 = LoadFile(f0Path);
                                     double[] melspec = LoadFile(melspecPath);
@@ -251,7 +251,7 @@ namespace OpenUtau.Core.Neutrino {
                                     int tailFrames = (int)Math.Round(tailMs / framePeriod);
                                     double[] editorF0 = SampleCurve(phrase, phrase.pitches, 0, framePeriod, totalFrames, headFrames, tailFrames, x => MusicMath.ToneToFreq(x * 0.01));
                                     SaveFile(editorf0Path, editorF0);
-                                    ArgParam = $"\"{editorf0Path}\" \"{melspecPath}\" \"{modelDir}{nsf}.bin\" \"{wavPath}\" -l \"{monoTimingPath}\" -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -f {toneShift} -m -t";
+                                    ArgParam = $"\"{editorf0Path}\" \"{melspecPath}\" \"{modelDir}{nsf}.bin\" \"{wavPath}\" -l \"{monoTimingPath}\" -n 1 -p {numThreads} -s{(int)sampleRate / 1000} -m -t";
                                 }
                                 if (File.Exists(VocoderClientExe)) {
                                     ProcessRunner.Run(VocoderClientExe, ArgParam, Log.Logger);
@@ -287,12 +287,12 @@ namespace OpenUtau.Core.Neutrino {
                             }
                             if (!File.Exists(wavPath) && File.Exists(f0Path) && File.Exists(mgcPath) && File.Exists(bapPath)) {
                                 if (phrase.phones[0].direct) {
-                                    float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100) ?? 1f;
+                                    float gender = 1f + (phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.GEN)).Item2 / 100f) ?? 1f;
                                     float breathiness = phrase.phones[0].flags.FirstOrDefault(f => f.Item3.Equals(Format.Ustx.BRE)).Item2 ?? 0f;
                                     ArgParam = $"\"{f0Path}\" \"{mgcPath}\" \"{bapPath}\" \"{wavPath}\" -n 1 -m {gender} -b {breathiness} -t";
                                     // vocoder_server only speaks NSF. Handing it the WORLD
                                     // arguments kills the server, so always run WORLD directly.
-                                        ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
+                                    ProcessRunner.Run(WorldExe, ArgParam, Log.Logger);
                                     if (!File.Exists(wavPath)) {
                                         Log.Error($"NEUTRINO produced no wav at {wavPath}. args: {ArgParam}");
                                         result.samples = new float[0];
@@ -500,6 +500,10 @@ namespace OpenUtau.Core.Neutrino {
         public override string ToString() => Renderers.NEUTRINO;
 
         public override RenderPitchResult LoadRenderedPitch(RenderPhrase phrase) {
+            if (this.singer == null) {
+                // Nothing rendered yet, so Version cannot be resolved.
+                return null;
+            }
             var result = new RenderPitchResult();
             try {
                 string tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{phrase.preEffectHash:x16}_temp");
@@ -543,7 +547,9 @@ namespace OpenUtau.Core.Neutrino {
                     }
                     result.ticks[i] = phrase.timeAxis.MsPosToTickPos(t) - phrase.position;
                 }
-            } catch {
+            } catch (Exception e) {
+                Log.Error(e, "Failed to load rendered pitch.");
+                return null;
             }
             return result;
         }
