@@ -187,16 +187,17 @@ namespace OpenUtau.Core.Neutrino {
                     if (!Directory.Exists(tmpPath)) {
                         Directory.CreateDirectory(tmpPath);
                     }
-                    string wavPath = Path.Join(tmpPath, $"ne-{phrase.hash}.wav");
-                    string f0Path = Path.Join(tmpPath, $"ne-{phrase.hash}.f0");
-                    string editorf0Path = Path.Join(tmpPath, $"ne-edit.f0");
-                    string melspecPath = Path.Join(tmpPath, $"ne-{phrase.hash}.melspec");
-                    string mgcPath = Path.Join(tmpPath, $"ne-{phrase.hash}.mgc");
-                    string bapPath = Path.Join(tmpPath, $"ne-{phrase.hash}.bap");
+                    int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
+                    ulong frameHash = HashPhraseFrames(phrase);
+                    string wavPath = Path.Join(tmpPath, $"ne-{frameHash}.wav");
+                    string f0Path = Path.Join(tmpPath, $"ne-{frameHash}.f0");
+                    string editorf0Path = Path.Join(tmpPath, $"ne-{frameHash}-edit.f0");
+                    string melspecPath = Path.Join(tmpPath, $"ne-{frameHash}.melspec");
+                    string mgcPath = Path.Join(tmpPath, $"ne-{frameHash}.mgc");
+                    string bapPath = Path.Join(tmpPath, $"ne-{frameHash}.bap");
                     fullScorePath = Path.Join(tmpPath, $"ne-{hash}_full_score.lab");
                     monoTimingPath = Path.Join(tmpPath, $"ne-{hash}_mono_timing.lab");
                     string modelDir = NeutrinoUtils.ModelDir(this.singer);
-                    int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
                     int numThreads = Preferences.Default.NumRenderThreads;
                     if (!File.Exists(fullScorePath) && !File.Exists(monoTimingPath)) {
                         ProcessPart(phrase);
@@ -484,7 +485,7 @@ namespace OpenUtau.Core.Neutrino {
             var result = new RenderPitchResult();
             try {
                 string tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{phrase.preEffectHash:x16}_temp");
-                string f0Path = Path.Join(tmpPath, $"ne-{phrase.hash}.f0");
+                string f0Path = Path.Join(tmpPath, $"ne-{HashPhraseFrames(phrase)}.f0");
                 if (!File.Exists(f0Path)) {
                     return null;
                 }
@@ -530,17 +531,25 @@ namespace OpenUtau.Core.Neutrino {
         }
 
 
-        ulong HashPhraseGroups(RenderPhrase phrase) {
+        // toneShift (SHFT / NEUTRINO StyleShift) is not written by RenderPhone.Hash(), so it
+        // never reaches phrase.preEffectHash or phrase.hash. Mix it into the cache keys here,
+        // otherwise changing it reuses the cached files and -k never takes effect.
+        ulong HashWithToneShift(ulong baseHash, RenderPhrase phrase) {
             using (var stream = new MemoryStream()) {
                 using (var writer = new BinaryWriter(stream)) {
-                    writer.Write(phrase.preEffectHash);
-                    writer.Write(phrase.phones[0].toneShift);
-                    foreach (var phone in phrase.phones) {
-                        writer.Write(phone.tone);
-                    }
+                    writer.Write(baseHash);
+                    writer.Write(phrase.phones[0] != null ? phrase.phones[0].toneShift : 0);
                     return XXH64.DigestOf(stream.ToArray());
                 }
             }
         }
+
+        // Score level key. The label files depend on the notes and StyleShift only,
+        // so curve edits must not force the timing estimation to run again.
+        ulong HashPhraseGroups(RenderPhrase phrase) => HashWithToneShift(phrase.preEffectHash, phrase);
+
+        // Frame level key. f0/melspec/mgc/bap/wav additionally depend on the edited curves,
+        // which phrase.hash covers.
+        ulong HashPhraseFrames(RenderPhrase phrase) => HashWithToneShift(phrase.hash, phrase);
     }
 }
