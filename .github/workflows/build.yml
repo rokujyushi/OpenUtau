@@ -106,7 +106,8 @@ jobs:
         run: |
           npm install -g create-dmg
           cp OpenUtau/Assets/OpenUtau.icns bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app/Contents/Resources/
-          create-dmg bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app || true
+          create-dmg bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app
+          ls -lah *.dmg
           mv *.dmg OpenUtau-${{ matrix.arch.name }}.dmg
           codesign -fvs - OpenUtau-${{ matrix.arch.name }}.dmg
         if: ${{ matrix.arch.os == 'osx' }}
