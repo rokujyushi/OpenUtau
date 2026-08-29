@@ -193,13 +193,15 @@ namespace OpenUtau.Core.Neutrino {
                         Directory.CreateDirectory(tmpPath);
                     }
                     int toneShift = phrase.phones[0] != null ? phrase.phones[0].toneShift : 0;
-                    ulong frameHash = HashPhraseFrames(phrase);
-                    string wavPath = Path.Join(tmpPath, $"ne-{frameHash}.wav");
-                    string f0Path = Path.Join(tmpPath, $"ne-{frameHash}.f0");
-                    string editorf0Path = Path.Join(tmpPath, $"ne-{frameHash}-edit.f0");
-                    string melspecPath = Path.Join(tmpPath, $"ne-{frameHash}.melspec");
-                    string mgcPath = Path.Join(tmpPath, $"ne-{frameHash}.mgc");
-                    string bapPath = Path.Join(tmpPath, $"ne-{frameHash}.bap");
+                    ulong acousticHash = HashPhraseAcoustic(phrase);
+                    ulong renderHash = HashPhraseRender(phrase);
+                    string wavPath = Path.Join(tmpPath, $"ne-{renderHash}.wav");
+                    string f0Path = Path.Join(tmpPath, $"ne-{acousticHash}.f0");
+                    string editorf0Path = Path.Join(tmpPath, $"ne-{acousticHash}-edit.f0");
+                    string melspecPath = Path.Join(tmpPath, $"ne-{acousticHash}.melspec");
+                    string editorMelspecPath = Path.Join(tmpPath, $"ne-{renderHash}-edit.melspec");
+                    string mgcPath = Path.Join(tmpPath, $"ne-{acousticHash}.mgc");
+                    string bapPath = Path.Join(tmpPath, $"ne-{acousticHash}.bap");
                     fullScorePath = Path.Join(tmpPath, $"ne-{hash}_full_score.lab");
                     monoTimingPath = Path.Join(tmpPath, $"ne-{hash}_mono_timing.lab");
                     string modelDir = NeutrinoUtils.ModelDir(this.singer);
@@ -382,11 +384,12 @@ namespace OpenUtau.Core.Neutrino {
                         }
                         //音声ファイル生成
                         if (!File.Exists(wavPath) && File.Exists(f0Path) && File.Exists(melspecPath)) {
+                            //メルスペクトグラムの編集
+                            string synthMelspecPath = EditMelspec(phrase, melspecPath, editorMelspecPath);
                             if (phrase.phones[0].direct) {
-                                ArgParam = $"\"{fullScorePath}\" \"{monoTimingPath}\" \"{f0Path}\" \"{melspecPath}\" \"{wavPath}\" \"{modelDir}\" --skip-timing --skip-f0 --skip-melspec -k {toneShift} -m -t";
+                                ArgParam = $"\"{fullScorePath}\" \"{monoTimingPath}\" \"{f0Path}\" \"{synthMelspecPath}\" \"{wavPath}\" \"{modelDir}\" --skip-timing --skip-f0 --skip-melspec -k {toneShift} -m -t";
                             } else {
-                                // TODO:メルスペクトグラムの編集
-                                ArgParam = $"\"{fullScorePath}\" \"{monoTimingPath}\" \"{editorf0Path}\" \"{melspecPath}\" \"{wavPath}\" \"{modelDir}\" --skip-timing --skip-f0 --skip-melspec -k {toneShift} -m -t";
+                                ArgParam = $"\"{fullScorePath}\" \"{monoTimingPath}\" \"{editorf0Path}\" \"{synthMelspecPath}\" \"{wavPath}\" \"{modelDir}\" --skip-timing --skip-f0 --skip-melspec -k {toneShift} -m -t";
                             }
                             if (existNeutrinoClient) {
                                 ProcessRunner.Run(NeutrinoClientExe, ArgParam, Log.Logger);
@@ -455,6 +458,37 @@ namespace OpenUtau.Core.Neutrino {
         }
 
 
+        /// <summary>
+        /// Applies GENC (formant warp) and TENC (spectral tilt) to the melspec NEUTRINO
+        /// predicted, and returns the path to feed into the waveform step. When both curves
+        /// are flat the original file is used as is, so nothing is written or re-read.
+        /// </summary>
+        string EditMelspec(RenderPhrase phrase, string melspecPath, string editorMelspecPath) {
+            try {
+                if (File.Exists(editorMelspecPath)) {
+                    return editorMelspecPath;
+                }
+                double[] melspec = LoadFile(melspecPath);
+                int totalFrames = melspec.Length / NeutrinoMelspec.Bins;
+                if (totalFrames == 0 || melspec.Length % NeutrinoMelspec.Bins != 0) {
+                    Log.Warning($"Unexpected melspec size {melspec.Length} in {melspecPath}, skipping edit.");
+                    return melspecPath;
+                }
+                int headFrames = (int)Math.Ceiling(headMs / 1000.0 * 99.84);
+                int tailFrames = (int)Math.Floor(tailMs / 1000.0 * 99.84);
+                var gender = SampleCurve(phrase, phrase.gender, 0, 9.984, totalFrames, headFrames, tailFrames, x => x);
+                var tension = SampleCurve(phrase, phrase.tension, 0, 9.984, totalFrames, headFrames, tailFrames, x => x);
+                if (NeutrinoMelspec.IsNoOp(gender, tension)) {
+                    return melspecPath;
+                }
+                SaveFile(editorMelspecPath, NeutrinoMelspec.Edit(melspec, gender, tension));
+                return editorMelspecPath;
+            } catch (Exception e) {
+                Log.Error(e, "Failed to edit melspec, falling back to the unedited one.");
+                return melspecPath;
+            }
+        }
+
         public override UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings) {
             var result = new List<UExpressionDescriptor> {
                 //energy
@@ -507,7 +541,7 @@ namespace OpenUtau.Core.Neutrino {
             var result = new RenderPitchResult();
             try {
                 string tmpPath = Path.Join(PathManager.Inst.CachePath, $"ne-{phrase.preEffectHash:x16}_temp");
-                string f0Path = Path.Join(tmpPath, $"ne-{HashPhraseFrames(phrase)}.f0");
+                string f0Path = Path.Join(tmpPath, $"ne-{HashPhraseAcoustic(phrase)}.f0");
                 if (!File.Exists(f0Path)) {
                     return null;
                 }
@@ -555,25 +589,50 @@ namespace OpenUtau.Core.Neutrino {
         }
 
 
-        // toneShift (SHFT / NEUTRINO StyleShift) is not written by RenderPhone.Hash(), so it
-        // never reaches phrase.preEffectHash or phrase.hash. Mix it into the cache keys here,
-        // otherwise changing it reuses the cached files and -k never takes effect.
-        ulong HashWithToneShift(ulong baseHash, RenderPhrase phrase) {
+        // Cache keys are layered so that an edit only invalidates the steps that actually
+        // depend on it. phrase.hash is deliberately not used: it mixes in every curve, so a
+        // gender tweak would re-run the acoustic model, and it omits toneShift entirely
+        // because RenderPhone.Hash() does not write it.
+        //
+        //   group    : notes + StyleShift              -> label files
+        //   acoustic : group + pitch curve             -> f0, edited f0, melspec
+        //   render   : acoustic + vocoder side curves  -> edited melspec, wav
+        //
+        // DYN is in none of them on purpose. It is applied to the samples after the wav is
+        // read, so changing it never needs a re-render.
+        ulong HashPhrase(RenderPhrase phrase, bool withPitch, bool withVocoderCurves) {
             using (var stream = new MemoryStream()) {
                 using (var writer = new BinaryWriter(stream)) {
-                    writer.Write(baseHash);
+                    writer.Write(phrase.preEffectHash);
                     writer.Write(phrase.phones[0] != null ? phrase.phones[0].toneShift : 0);
+                    if (withPitch) {
+                        WriteCurve(writer, phrase.pitches);
+                    }
+                    if (withVocoderCurves) {
+                        WriteCurve(writer, phrase.gender);
+                        WriteCurve(writer, phrase.tension);
+                        WriteCurve(writer, phrase.breathiness);
+                        WriteCurve(writer, phrase.voicing);
+                    }
                     return XXH64.DigestOf(stream.ToArray());
                 }
             }
         }
 
-        // Score level key. The label files depend on the notes and StyleShift only,
-        // so curve edits must not force the timing estimation to run again.
-        ulong HashPhraseGroups(RenderPhrase phrase) => HashWithToneShift(phrase.preEffectHash, phrase);
+        static void WriteCurve(BinaryWriter writer, float[] curve) {
+            if (curve == null) {
+                writer.Write("null");
+                return;
+            }
+            foreach (var value in curve) {
+                writer.Write(value);
+            }
+        }
 
-        // Frame level key. f0/melspec/mgc/bap/wav additionally depend on the edited curves,
-        // which phrase.hash covers.
-        ulong HashPhraseFrames(RenderPhrase phrase) => HashWithToneShift(phrase.hash, phrase);
+        ulong HashPhraseGroups(RenderPhrase phrase) => HashPhrase(phrase, false, false);
+
+        ulong HashPhraseAcoustic(RenderPhrase phrase) => HashPhrase(phrase, true, false);
+
+        ulong HashPhraseRender(RenderPhrase phrase) => HashPhrase(phrase, true, true);
     }
 }
