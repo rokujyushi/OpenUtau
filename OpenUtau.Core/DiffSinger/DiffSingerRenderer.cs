@@ -123,6 +123,8 @@ namespace OpenUtau.Core.DiffSinger {
                     }
                     if (result.samples != null) {
                         Renderers.ApplyDynamics(phrase, result);
+                        PlaybackManager.Inst.LiveWaveformCache[phrase.hash.ToString()] = (trackNo, phrase.positionMs - phrase.leadingMs, result.samples, DateTime.Now);
+                        DocManager.Inst.ExecuteCmd(new WaveformReadyNotification());
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
                     return result;
@@ -507,6 +509,11 @@ namespace OpenUtau.Core.DiffSinger {
                 throw new Exception($"The shape of vocoder output should be (1, length), but the actual shape is {DiffSingerUtils.ShapeString(samplesTensor)}");
             }
             var samples = samplesTensor.ToArray();
+            if (vocoder.sample_rate != 44100) {
+                var signal = new NWaves.Signals.DiscreteSignal(vocoder.sample_rate, samples);
+                signal = NWaves.Operations.Operation.Resample(signal, 44100);
+                samples = signal.Samples;
+            }
             return samples;
         }
 
