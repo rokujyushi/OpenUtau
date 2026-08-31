@@ -159,6 +159,11 @@ namespace OpenUtau.Core.Util {
             public int WorldlineR = 0;
             public string OnnxRunner = string.Empty;
             public int OnnxGpu = 0;
+            /// <summary>
+            /// GAME MIDI extractor backend preference: "onnx" (default) or "ggml".
+            /// Affects which inference engine Game uses; see GameBackendFactory.
+            /// </summary>
+            public string GameBackend = "onnx";
             public double DiffSingerDepth = 1.0;
             public int DiffSingerSteps = 20;
             public int DiffSingerStepsVariance = 20;
@@ -211,6 +216,8 @@ namespace OpenUtau.Core.Util {
             public bool RememberUst = true;
             public bool RememberVsqx = true;
             public string WinePath = string.Empty;
+            public bool UseWayland  = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY") != null
+                                         || Environment.GetEnvironmentVariable("XDG_SESSION_TYPE") == "wayland"; //Check for Wayland
             public bool DefaultSnapCurve = true;
             public string PhoneticAssistant = string.Empty;
             public string RecentOpenSingerDirectory = string.Empty;
@@ -254,7 +261,7 @@ namespace OpenUtau.Core.Util {
 errors.txt
 ";
             public string RecoveryPath = string.Empty;
-            public bool DetachPianoRoll = false;
+            public bool DetachPianoRoll = true;
 
             // ----- Mix FX (post-processing) -----
             // Per-track FX state lives in UTrack.MixFx and the project ustx.
