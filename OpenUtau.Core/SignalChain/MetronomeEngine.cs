@@ -12,7 +12,9 @@ namespace OpenUtau.Core.SignalChain {
 
         private readonly ToneGenerator toneGenerator = new ToneGenerator(PlaybackManager.GetMetronomeGain());
         private readonly MetronomeScheduler scheduler = new MetronomeScheduler();
+        private readonly object lockObj = new object();
         private TimeAxis? playbackTimeAxis;
+        private float lastGain = float.NaN;
 
         private static double MetronomeBarFreq => Preferences.Default.MetronomeHighFrequency;
         private static double MetronomeBeatFreq => Preferences.Default.MetronomeLowFrequency;
@@ -36,58 +38,68 @@ namespace OpenUtau.Core.SignalChain {
         }
 
         public void SetEnabled(bool enabled, TimeAxis? timeAxis = null, int tick = -1) {
-            Enabled = enabled;
-            if (!enabled) {
-                Stop();
-                return;
-            }
-            if (timeAxis != null && tick >= 0) {
-                playbackTimeAxis = timeAxis;
-                scheduler.Reset(timeAxis, tick);
+            lock (lockObj) {
+                Enabled = enabled;
+                if (!enabled) {
+                    Stop();
+                    return;
+                }
+                if (timeAxis != null && tick >= 0) {
+                    playbackTimeAxis = timeAxis;
+                    scheduler.Reset(timeAxis, tick);
+                }
             }
         }
 
         public void Stop() {
-            toneGenerator.EndAllTones();
-            scheduler.Clear();
-            playbackTimeAxis = null;
+            lock (lockObj) {
+                toneGenerator.EndAllTones();
+                scheduler.Clear();
+                playbackTimeAxis = null;
+            }
         }
 
         public void StartPlayback(TimeAxis timeAxis, int tick) {
             ArgumentNullException.ThrowIfNull(timeAxis);
-            toneGenerator.EndAllTones();
-            playbackTimeAxis = timeAxis;
-            if (Enabled) {
-                scheduler.Reset(timeAxis, tick);
-            } else {
-                scheduler.Clear();
+            lock (lockObj) {
+                toneGenerator.EndAllTones();
+                playbackTimeAxis = timeAxis;
+                if (Enabled) {
+                    scheduler.Reset(timeAxis, tick);
+                } else {
+                    scheduler.Clear();
+                }
             }
         }
 
         public void UpdateSchedule(TimeAxis timeAxis, int tick) {
             ArgumentNullException.ThrowIfNull(timeAxis);
-            if (!Enabled) {
-                scheduler.Clear();
-                return;
+            lock (lockObj) {
+                if (!Enabled) {
+                    scheduler.Clear();
+                    return;
+                }
+                playbackTimeAxis = timeAxis;
+                scheduler.Reset(timeAxis, tick);
             }
-            playbackTimeAxis = timeAxis;
-            scheduler.Reset(timeAxis, tick);
         }
 
         private void ScheduleBuffer(int position, int count) {
-            if (!Enabled || playbackTimeAxis == null || !scheduler.IsScheduled) {
-                return;
-            }
+            lock (lockObj) {
+                if (!Enabled || playbackTimeAxis == null || !scheduler.IsScheduled) {
+                    return;
+                }
 
-            double bufferStartMs = position * 1000.0 / (SampleRate * Channels);
-            double bufferEndMs = (position + count) * 1000.0 / (SampleRate * Channels);
-            while (scheduler.IsScheduled && scheduler.NextMs < bufferStartMs) {
-                scheduler.Advance(playbackTimeAxis);
-            }
-            while (scheduler.IsScheduled && scheduler.NextMs < bufferEndMs) {
-                int startSampleOffset = (int)Math.Round((scheduler.NextMs - bufferStartMs) * SampleRate / 1000.0);
-                PlayClick(scheduler.NextBeat == 0, startSampleOffset);
-                scheduler.Advance(playbackTimeAxis);
+                double bufferStartMs = position * 1000.0 / (SampleRate * Channels);
+                double bufferEndMs = (position + count) * 1000.0 / (SampleRate * Channels);
+                while (scheduler.IsScheduled && scheduler.NextMs < bufferStartMs) {
+                    scheduler.Advance(playbackTimeAxis);
+                }
+                while (scheduler.IsScheduled && scheduler.NextMs < bufferEndMs) {
+                    int startSampleOffset = (int)Math.Round((scheduler.NextMs - bufferStartMs) * SampleRate / 1000.0);
+                    PlayClick(scheduler.NextBeat == 0, startSampleOffset);
+                    scheduler.Advance(playbackTimeAxis);
+                }
             }
         }
 
@@ -108,7 +120,11 @@ namespace OpenUtau.Core.SignalChain {
         }
 
         private void UpdateGain() {
-            toneGenerator.SetGain(PlaybackManager.GetMetronomeGain());
+            float gain = PlaybackManager.GetMetronomeGain();
+            if (gain != lastGain) {
+                lastGain = gain;
+                toneGenerator.SetGain(gain);
+            }
         }
     }
 }

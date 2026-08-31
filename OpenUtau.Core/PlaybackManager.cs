@@ -211,6 +211,12 @@ namespace OpenUtau.Core {
     class PlaybackMix : ISignalSource {
         private readonly ISignalSource masterSource;
         private readonly ISignalSource overlaySource;
+        private volatile bool masterExhausted;
+
+        // True once the master source stops producing audio, release tails included.
+        // The overlay can always produce sound, so the mix itself never reports
+        // end-of-stream and playback has to be stopped by play position instead.
+        public bool MasterExhausted => masterExhausted;
 
         public PlaybackMix(ISignalSource masterSource, ISignalSource overlaySource) {
             this.masterSource = masterSource;
@@ -224,6 +230,7 @@ namespace OpenUtau.Core {
         public int Mix(int position, float[] buffer, int offset, int count) {
             int masterPos = masterSource.Mix(position, buffer, offset, count);
             int overlayPos = overlaySource.Mix(position, buffer, offset, count);
+            masterExhausted = masterPos <= position;
             return Math.Max(masterPos, overlayPos);
         }
     }
@@ -242,6 +249,7 @@ namespace OpenUtau.Core {
 
             toneGenerator = new ToneGenerator();
             metronomeEngine = new MetronomeEngine();
+            metronomeEngine.SetEnabled(Preferences.Default.MetronomeEnabled);
             editingMix = new MasterAdapter(toneGenerator);
         }
 
@@ -259,6 +267,9 @@ namespace OpenUtau.Core {
         // boundary even when looping is disabled.
         private int playbackRangeStartTick = 0;
         private int playbackRangeEndTick = -1;
+        // Tick where the current playback must end, -1 when unbounded (empty project).
+        private int playbackEndTick = -1;
+        private PlaybackMix playbackMix;
         private bool loopProjectOnPlaybackEnd;
 
         public Audio.IAudioOutput AudioOutput { get; set; } = new Audio.DummyAudioOutput();
@@ -266,7 +277,20 @@ namespace OpenUtau.Core {
         public bool StartingToPlay { get; private set; }
         public bool PlayingMaster { get; private set; }
         public bool LoopPlayback { get; set; }
-        public bool MetronomeEnabled { get; private set; }
+        public bool MetronomeEnabled {
+            get => metronomeEngine.Enabled;
+            set {
+                if (metronomeEngine.Enabled == value) {
+                    return;
+                }
+                Preferences.Default.MetronomeEnabled = value;
+                Preferences.Save();
+                metronomeEngine.SetEnabled(
+                    value,
+                    PlayingMaster ? DocManager.Inst.Project.timeAxis : null,
+                    PlayingMaster ? DocManager.Inst.playPosTick : -1);
+            }
+        }
 
         public void PlayTestSound() {
             masterMix = null;
@@ -372,6 +396,7 @@ namespace OpenUtau.Core {
         }
 
         public void Play(UProject project, int tick, int endTick = -1, int trackNo = -1) {
+            playbackEndTick = endTick == -1 ? project.EndTick : endTick;
             if (AudioOutput.PlaybackState == PlaybackState.Paused) {
                 PlayingMaster = true;
                 metronomeEngine.StartPlayback(project.timeAxis, DocManager.Inst.playPosTick);
@@ -391,6 +416,8 @@ namespace OpenUtau.Core {
             PlayingMaster = false;
             metronomeEngine.Stop();
             playbackRangeEndTick = -1;
+            playbackEndTick = -1;
+            playbackMix = null;
             loopProjectOnPlaybackEnd = false;
         }
 
@@ -403,14 +430,6 @@ namespace OpenUtau.Core {
             loopProjectOnPlaybackEnd = false;
         }
 
-        public void PlayMetronome(bool enabled) {
-            MetronomeEnabled = enabled;
-            metronomeEngine.SetEnabled(
-                enabled,
-                PlayingMaster ? DocManager.Inst.Project.timeAxis : null,
-                PlayingMaster ? DocManager.Inst.playPosTick : -1);
-        }
-
         private void StartPlayback(double startMs, MasterAdapter masterAdapter) {
             toneGenerator.EndAllTones();
             this.startMs = startMs;
@@ -421,6 +440,9 @@ namespace OpenUtau.Core {
             AudioOutput.Stop();
             AudioOutput.Init(masterMix);
             AudioOutput.Play();
+            // Cleared only after playback actually starts. Until then UpdatePlayPos
+            // would see Stopped + PlayingMaster and stop the playback it is starting.
+            StartingToPlay = false;
         }
 
         private void Render(UProject project, int tick, int endTick, int trackNo) {
@@ -431,11 +453,11 @@ namespace OpenUtau.Core {
                     DocManager.Inst.ExecuteCmd(new WaveformReadyNotification());
                     RenderEngine engine = new RenderEngine(project, startTick: tick, endTick: endTick, trackNo: trackNo);
                     var result = engine.RenderMixdown(DocManager.Inst.MainScheduler, ref renderCancellation, wait: false);
-                    var playbackAdapter = new MasterAdapter(new PlaybackMix(result.Item1, metronomeEngine));
+                    playbackMix = new PlaybackMix(result.Item1, metronomeEngine);
+                    var playbackAdapter = new MasterAdapter(playbackMix);
                     playbackAdapter.SetPosition((int)(project.timeAxis.TickPosToMsPos(tick) * 44100 / 1000) * 2);
                     faders = result.Item2;
                     PlayingMaster = true;
-                    StartingToPlay = false;
                     StartPlayback(project.timeAxis.TickPosToMsPos(tick), playbackAdapter);
                     DocManager.Inst.ExecuteCmd(new WaveformReadyNotification());
                 } catch (Exception e) {
@@ -448,12 +470,19 @@ namespace OpenUtau.Core {
         }
 
         public void UpdatePlayPos() {
-            if (AudioOutput != null && AudioOutput.PlaybackState == PlaybackState.Playing && PlayingMaster) {
+            if (AudioOutput != null && AudioOutput.PlaybackState == PlaybackState.Playing && PlayingMaster && masterMix != null) {
 
                 double ms = (AudioOutput.GetPosition() / sizeof(float) - masterMix.Waited / 2) * 1000.0 / 44100;
                 int tick = DocManager.Inst.Project.timeAxis.MsPosToTickPos(startMs + ms);
                 if (playbackRangeEndTick > 0 && tick >= playbackRangeEndTick) {
                     HandlePlaybackBoundary(hasPlaybackRange: true);
+                    return;
+                }
+                if (playbackRangeEndTick <= 0 &&
+                    playbackEndTick > 0 &&
+                    tick >= playbackEndTick &&
+                    (playbackMix == null || playbackMix.MasterExhausted)) {
+                    HandlePlaybackBoundary(hasPlaybackRange: false);
                     return;
                 }
                 DocManager.Inst.ExecuteCmd(new SetPlayPosTickNotification(tick, masterMix.IsWaiting));
