@@ -26,7 +26,6 @@ namespace OpenUtau.Core.Voicevox {
         const string VOLC = VoicevoxUtils.VOLC;
         const string SMOC = VoicevoxUtils.SMOC;
         const string REPM = VoicevoxUtils.REPM;
-        //const string DUCM = VoicevoxUtils.DUCM;
         const string PITD = Format.Ustx.PITD;
 
         static readonly HashSet<string> supportedExp = new HashSet<string>(){
@@ -39,7 +38,6 @@ namespace OpenUtau.Core.Voicevox {
             VOLC,
             SMOC,
             REPM,
-            //DUCM
         };
 
         static readonly object lockObj = new object();
@@ -175,6 +173,7 @@ namespace OpenUtau.Core.Voicevox {
             return task;
         }
 
+        //Match the phonemes in the synthesis parameters to the scores in the score to update F0 and volume  
         private VoicevoxSynthParams PhraseToVoicevoxSynthParams(RenderPhrase phrase, VoicevoxSinger singer, bool pitch_slur) {
 
             //Prepare for future additions of Teacher Singer.
@@ -182,7 +181,6 @@ namespace OpenUtau.Core.Voicevox {
             VoicevoxUtils.InitializedSpeaker(baseSingerID, true);
             List<VoicevoxNote> vNotes = BuildVNotes(phrase);
 
-            //Match the phonemes in the synthesis parameters to the scores in the score to update F0 and volume  
             //Create parameters for the update source. 
             VoicevoxQueryMain vqMain = VoicevoxUtils.NoteGroupsToVQuery(vNotes.ToArray(), phrase.timeAxis);
             VoicevoxSynthParams vsParams;
@@ -198,13 +196,7 @@ namespace OpenUtau.Core.Voicevox {
                 VoicevoxSynthParams vsParamsUser = vsParams.Clone();
                 if (vsParams.phonemes.Count == vsParamsServer.phonemes.Count) {
                     for (int i = 0; i < vsParamsServer.phonemes.Count; i++) {
-                        // TODO: Develop a VOICEVOX engine dedicated to OpenUtau so that synthesis parameters are updated when phonemes are changed.
-                        //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
-                        //if (flag != null) {
-                        //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
                         vsParams.phonemes[i].phoneme = vsParamsServer.phonemes[i].phoneme;
-                        //    }
-                        //}
                     }
                 }
                 //Update F0 and volume
@@ -212,12 +204,7 @@ namespace OpenUtau.Core.Voicevox {
                 vsParams.volume = VoicevoxUtils.QueryToVolume(vqMain, vsParams, baseSingerID);
                 //Update phoneme
                 for (int i = 0; i < vsParamsUser.phonemes.Count; i++) {
-                    //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item1 == VoicevoxUtils.REPM);
-                    //if (flag != null) {
-                    //    if (flag.Item3.Equals(VoicevoxUtils.REPLACE)) {
                     vsParams.phonemes[i].phoneme = vsParamsUser.phonemes[i].phoneme;
-                    //    }
-                    //}
                 }
             }
             if (pitch_slur) {
@@ -301,34 +288,6 @@ namespace OpenUtau.Core.Voicevox {
 
                     int length = endFrame - startFrame;
 
-                    currentMs = endMs;
-                    //if (length < 2) {
-                    //    length = 2;
-                    //}
-                    int correction = 0;
-                    //var flag = phrase.phones[i].flags.FirstOrDefault(f => f.Item3.Equals(DUCM));
-                    //if (flag != null) {
-                    //    switch (flag.Item1) {
-                    //        case VoicevoxUtils.ON:
-                    //            correction = 1;
-                    //            break;
-                    //        case VoicevoxUtils.OFF:
-                    //            correction = 2;
-                    //            break;
-                    //    }
-                    //}
-                    //if (correction != 2) {
-                    //    if (durationMs > (length / VoicevoxUtils.fps) * 1000f) {
-                    //        if (short_length_count >= 2) {
-                    //            length += 1;
-                    //            short_length_count = 0;
-                    //        } else {
-                    //            short_length_count += 1;
-                    //        }
-                    //    } else if (correction == 1) {
-                    //        length += 1;
-                    //    }
-                    //}
                     vsParams.phonemes.Add(new Phonemes() {
                         phoneme = phrase.phones[i].phoneme,
                         frame_length = length
@@ -416,14 +375,6 @@ namespace OpenUtau.Core.Voicevox {
                 //    type = UExpressionType.Options,
                 //    options = new string[] { VoicevoxUtils.REPLACE, VoicevoxUtils.OVERWRITE},
                 //    isFlag = false,
-                //},
-                //duration correction mode
-                //new UExpressionDescriptor{
-                //    name = "duration correction mode",
-                //    abbr = DUCM,
-                //    type = UExpressionType.Options,
-                //    options = new string[] { VoicevoxUtils.AUTO, VoicevoxUtils.ON, VoicevoxUtils.OFF},
-                //    isFlag = true,
                 //},
             };
 
