@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -23,6 +24,7 @@ using static ReactiveUI.Primitives.SubscribeExtensions;
 
 namespace OpenUtau.App.ViewModels {
     public class NotesRefreshEvent { }
+    public class RealCurveRefreshEvent { }
     public class NotesSelectionEvent {
         public readonly UNote[] selectedNotes;
         public readonly UNote[] tempSelectedNotes;
@@ -967,18 +969,26 @@ namespace OpenUtau.App.ViewModels {
         public void ClearPhraseCache() {
             if (Part != null && !Selection.IsEmpty) {
                 DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, ThemeManager.GetString("progress.clearingcache")));
+                
                 var selectedNotes = Selection.ToList();
-                var phrases = Part.renderPhrases.Where(phrase => selectedNotes.Any(note => phrase.notes.Any(rnote => rnote.position == Part.position + note.position - phrase.position && rnote.duration == note.duration)));
-                foreach (var phrase in phrases) {
-                    phrase.DeleteCacheFiles();
-                }
-                DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, ThemeManager.GetString("progress.cachecleared")));
+                var phrases = Part.renderPhrases
+                    .Where(phrase => selectedNotes.Any(note => 
+                        phrase.notes.Any(rnote => rnote.position == Part.position + note.position - phrase.position 
+                                            && rnote.duration == note.duration)))
+                    .ToList();
                 foreach (var phrase in phrases) {
                     PlaybackManager.Inst.LiveWaveformCache.TryRemove(phrase.hash.ToString(), out _);
                 }
-                // can't clear individual phrases :'(
                 Part.Mix = null;
                 DocManager.Inst.ExecuteCmd(new WaveformReadyNotification());
+                Task.Run(() => {
+                    foreach (var phrase in phrases) {
+                        phrase.DeleteCacheFiles();
+                    }
+                    Task.Factory.StartNew(() => {
+                        DocManager.Inst.ExecuteCmd(new ProgressBarNotification(0, ThemeManager.GetString("progress.cachecleared")));
+                    }, CancellationToken.None, TaskCreationOptions.None, DocManager.Inst.MainScheduler);
+                });
             }
         }
 
@@ -1100,6 +1110,10 @@ namespace OpenUtau.App.ViewModels {
                     MessageBus.Current.SendMessage(new NotesRefreshEvent());
                 } else if (notif is PartRenderedNotification && notif.part == Part) {
                     MessageBus.Current.SendMessage(new WaveformRefreshEvent());
+                } else if (notif is RealCurvesUpdatedNotification && notif.part == Part) {
+                    MessageBus.Current.SendMessage(new RealCurveRefreshEvent());
+                } else if (notif is RealCurveCoverageNotification && notif.part == Part) {
+                    MessageBus.Current.SendMessage(new RealCurveRefreshEvent());
                 }
             } else if (cmd is PartCommand partCommand) {
                 if (cmd is ReplacePartCommand replacePart) {
