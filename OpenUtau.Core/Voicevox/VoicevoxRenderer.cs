@@ -12,7 +12,6 @@ using OpenUtau.Core.Format;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
 using Serilog;
-using SharpCompress;
 using ThirdParty;
 
 /*
@@ -148,7 +147,7 @@ namespace OpenUtau.Core.Voicevox {
                                 throw new MessageCustomizableException("Failed to create the audio.", e.Message, e);
                             } catch (Exception e) {
                                 Log.Error(e, "Failed to create the audio.");
-                                }
+                            }
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
                             }
@@ -262,30 +261,22 @@ namespace OpenUtau.Core.Voicevox {
                     phoneme = "pau",
                     frame_length = headFrames
                 });
-                double currentMs = 0;
+                //Holds the end frame of the previous phoneme so that phonemes stay contiguous.
+                int cursor = phrase.phones.Length > 0
+                    ? (int)Math.Round((phrase.phones[0].positionMs / 1000.0) * VoicevoxUtils.fps, MidpointRounding.AwayFromZero)
+                    : 0;
                 for (int i = 0; i < phrase.phones.Length; i++) {
-                    double startMs = phrase.phones[i].positionMs;
-                    double endMs =
-                        phrase.phones[i].positionMs
-                        + phrase.phones[i].durationMs;
+                    double endMs = phrase.phones[i].positionMs + phrase.phones[i].durationMs;
 
-                    int startFrame = (int)Math.Round(
-                        (startMs / 1000.0) * VoicevoxUtils.fps,
-                        MidpointRounding.AwayFromZero);
-
-                    double exactEnd = (endMs / 1000.0) * VoicevoxUtils.fps;
-
-                    int endFrame;
-
-                    if (VoicevoxUtils.IsPlosive(phrase.phones[i].phoneme)) {
-                        endFrame = (int)Math.Ceiling(exactEnd);
-                    } else {
-                        endFrame = (int)Math.Round(
-                            exactEnd,
-                            MidpointRounding.AwayFromZero);
-                    }
+                    int startFrame = cursor;
+                    int endFrame = VoicevoxUtils.ToEndFrame(
+                        startFrame,
+                        endMs,
+                        VoicevoxUtils.IsPlosive(phrase.phones[i].phoneme),
+                        VoicevoxUtils.minFrames);
 
                     int length = endFrame - startFrame;
+                    cursor = endFrame;
 
                     vsParams.phonemes.Add(new Phonemes() {
                         phoneme = phrase.phones[i].phoneme,
@@ -307,42 +298,6 @@ namespace OpenUtau.Core.Voicevox {
             vsParams.volume = Enumerable.Repeat(0.0, totalFrames).ToList();
             return vsParams;
         }
-
-        // TODO: Development of a more stable tone shift
-        //private List<double> ToneShift(RenderPhrase phrase, VoicevoxSynthParams vsParams) {
-        //    //Compatible with toneShift (key shift), for adjusting the range of tones when synthesizing
-        //    List<double> result = new List<double>();
-        //    if (IsPhonemeNoteCountMatch(phrase) && phrase.phones.All(p => VoicevoxUtils.phoneme_List.kanas.ContainsKey(p.phoneme))) {
-        //        List<int> shifts = new List<int>() { 0 };
-        //        shifts.AddRange(phrase.phones.Select(x => x.toneShift).ToList());
-        //        shifts.Add(0);
-        //        int totalFrames = 0;
-        //        int shiftidx = 0;
-        //        for (int i = 0; i <= vsParams.phonemes.Count - 1; i++) {
-        //            var f0 = vsParams.f0.GetRange(totalFrames, vsParams.phonemes[i].frame_length);
-        //            f0 = f0.Select(f0 => f0 = f0 * Math.Pow(2, ((shifts[shiftidx] * -1) / 12d))).ToList();
-        //            result.AddRange(f0);
-        //            totalFrames += vsParams.phonemes[i].frame_length;
-        //            if (VoicevoxUtils.IsVowel(vsParams.phonemes[i].phoneme) && shiftidx <= shifts.Count) {
-        //                shiftidx += 1;
-        //            }
-        //        }
-        //        Log.Debug($"ToneShift_Count: {shifts.Count},Phonemes_Count: {vsParams.phonemes.Count},vsParams_length: {vsParams.volume.Count},totalFrames: {totalFrames}");
-        //    } else {
-        //        List<int> shifts = new List<int>() { 0 };
-        //        shifts.AddRange(phrase.phones.Select(x => x.toneShift).ToList());
-        //        shifts.Add(0);
-        //        int totalFrames = 0;
-        //        for (int i = 0; i <= Math.Min(vsParams.phonemes.Count, shifts.Count) - 1; i++) {
-        //            var f0 = vsParams.f0.GetRange(totalFrames, vsParams.phonemes[i].frame_length);
-        //            f0 = f0.Select(f0 => f0 = f0 * Math.Pow(2, ((shifts[i] * -1) / 12d))).ToList();
-        //            result.AddRange(f0);
-        //            totalFrames += vsParams.phonemes[i].frame_length;
-        //        }
-        //        Log.Debug($"ToneShift_Count: {shifts.Count},Phonemes_Count: {vsParams.phonemes.Count},vsParams_length: {vsParams.volume.Count},totalFrames: {totalFrames}");
-        //    }
-        //    return result;
-        //}
 
         public UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings) {
             //under development
@@ -430,10 +385,10 @@ namespace OpenUtau.Core.Voicevox {
                     writer.Write(phrase.phones[0].tone);
                     writer.Write(phrase.phones[0].direct);
                     //phrase.hash does not cover the SHFT expression, so it has to be mixed in here.
-                        writer.Write(phrase.phones[0].toneShift);
-                        foreach (var phone in phrase.phones) {
-                            writer.Write(phone.tone);
-                        }
+                    writer.Write(phrase.phones[0].toneShift);
+                    foreach (var phone in phrase.phones) {
+                        writer.Write(phone.tone);
+                    }
                     writer.Write(phrase.phones[0].volume);
                     return XXH64.DigestOf(stream.ToArray());
                 }
