@@ -168,14 +168,9 @@ namespace OpenUtau.Core.Voicevox {
         public const string VOLC = "volc";
         public const string REPM = "repm";
         public const string SMOC = "smoc";
-        public const string DUCM = "ducm";
         // phoneme replace mode
         public const string REPLACE = "replace";
         public const string OVERWRITE = "overwrite";
-        // duration correction mode
-        public const string AUTO = "auto";
-        public const string ON = "on";
-        public const string OFF = "off";
         // VOICEVOX constants
         public const int headS = 1;
         public const int tailS = 1;
@@ -184,17 +179,6 @@ namespace OpenUtau.Core.Voicevox {
         // Phonemes and dictionaries
         public static Dictionary_list dic = new Dictionary_list();
         public static Phoneme_list phoneme_List = new Phoneme_list();
-        // JSON parse helper for testing
-        //private static bool TryParseJson(string json, out JToken token) {
-        //    try {
-        //        token = JToken.Parse(json);
-        //        return true;
-        //    } catch (JsonReaderException ex) {
-        //        Log.Error($"Invalid JSON: {ex.Message}");
-        //        token = null;
-        //        return false;
-        //    }
-        //}
 
         public static bool InitializedSpeaker(string id, bool skipReinit = false) {
             var queryurl = new VoicevoxURL() { method = "GET", path = "/is_initialized_speaker", query = new Dictionary<string, string> { { "speaker", id } } };

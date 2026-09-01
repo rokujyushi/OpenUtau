@@ -9,7 +9,6 @@ using NAudio.Wave;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using OpenUtau.Core.Format;
-using OpenUtau.Core.Format.MusicXMLSchema;
 using OpenUtau.Core.Render;
 using OpenUtau.Core.Ustx;
 using Serilog;
@@ -33,7 +32,7 @@ namespace OpenUtau.Core.Voicevox {
             PITD,
             Format.Ustx.CLR,
             Format.Ustx.VOL,
-            //Format.Ustx.SHFC,
+            Format.Ustx.DIR,
             Format.Ustx.SHFT,
             VOLC,
             SMOC,
@@ -72,8 +71,8 @@ namespace OpenUtau.Core.Voicevox {
                     }
                     string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
-                    ulong hash = HashPhraseGroups(phrase);
-                    var wavPath = Path.Join(PathManager.Inst.CachePath, $"vv-{phrase.hash:x16}_{hash:x8}.wav");
+                    ulong toneHash = HashPhraseGroups(phrase);
+                    var wavPath = Path.Join(PathManager.Inst.CachePath, $"vv-{phrase.hash:x16}_{toneHash:x16}.wav");
                     phrase.AddCacheFile(wavPath);
                     var result = Layout(phrase);
                     if (!File.Exists(wavPath)) {
@@ -83,7 +82,6 @@ namespace OpenUtau.Core.Voicevox {
                                 VoicevoxUtils.Loaddic(singer);
                             }
                             try {
-                                Log.Information($"Starting Voicevox synthesis");
                                 VoicevoxSynthParams vsParams = PhraseToVoicevoxSynthParams(phrase, phrase.singer as VoicevoxSinger, false);
 
                                 int vvTotalFrames = 0;
@@ -143,13 +141,14 @@ namespace OpenUtau.Core.Voicevox {
                                 if (bytes != null) {
                                     File.WriteAllBytes(wavPath, bytes);
                                 }
+                            } catch (MessageCustomizableException) {
+                                //BuildVNotes has already built a message for the user.
+                                throw;
+                            } catch (VoicevoxException e) {
+                                throw new MessageCustomizableException("Failed to create the audio.", e.Message, e);
                             } catch (Exception e) {
-                                if (e is VoicevoxException) {
-                                    throw new MessageCustomizableException("Failed to create the audio.", "Failed to create the audio.", e);
-                                } else {
-                                    Log.Error(e.Message);
+                                Log.Error(e, "Failed to create the audio.");
                                 }
-                            }
                             if (cancellation.IsCancellationRequested) {
                                 return new RenderResult();
                             }
@@ -430,13 +429,11 @@ namespace OpenUtau.Core.Voicevox {
                     writer.Write(phrase.preEffectHash);
                     writer.Write(phrase.phones[0].tone);
                     writer.Write(phrase.phones[0].direct);
-                    if (phrase.phones[0].direct) {
+                    //phrase.hash does not cover the SHFT expression, so it has to be mixed in here.
                         writer.Write(phrase.phones[0].toneShift);
-                    } else {
                         foreach (var phone in phrase.phones) {
                             writer.Write(phone.tone);
                         }
-                    }
                     writer.Write(phrase.phones[0].volume);
                     return XXH64.DigestOf(stream.ToArray());
                 }
