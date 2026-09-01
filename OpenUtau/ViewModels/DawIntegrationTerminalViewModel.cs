@@ -1,13 +1,13 @@
 ﻿using DynamicData.Binding;
 using OpenUtau.Core;
 using OpenUtau.Core.DawIntegration;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.SourceGenerators;
 using System.Threading.Tasks;
 
 namespace OpenUtau.App.ViewModels {
-    public class DawIntegrationTerminalViewModel : ViewModelBase {
-        [Reactive] public DawServer? SelectedServer { get; set; } = null;
-        [Reactive] public bool CanConnect { get; set; } = true;
+    public partial class DawIntegrationTerminalViewModel : ViewModelBase {
+        [Reactive] public partial DawServer? SelectedServer { get; set; } = null;
+        [Reactive] public partial bool CanConnect { get; set; } = true;
         public ObservableCollectionExtended<DawServer> ServerList { get; set; } = new ObservableCollectionExtended<DawServer>();
 
         public DawIntegrationTerminalViewModel() {

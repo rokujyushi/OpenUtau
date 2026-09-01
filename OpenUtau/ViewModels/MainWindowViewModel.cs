@@ -45,7 +45,7 @@ namespace OpenUtau.App.ViewModels {
         }
     }
 
-    public class MainWindowViewModel : ViewModelBase, ICmdSubscriber
+    public partial class MainWindowViewModel : ViewModelBase, ICmdSubscriber
     {
         public string Title
         {
