@@ -185,7 +185,7 @@ namespace OpenUtau.Core.Util {
             public bool DiffSingerVarianceLocalPitchPatch = false;
             public bool DiffSingerLangCodeHide = false;
             public bool DiffSingerLocalRetaking = false;
-            public bool MetronomeEnabled = false;
+            public bool Metronome = false;
             public bool SkipRenderingMutedTracks = false;
             public string Language = string.Empty;
             public string? SortingOrder = null;

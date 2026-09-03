@@ -249,7 +249,7 @@ namespace OpenUtau.Core {
 
             toneGenerator = new ToneGenerator();
             metronomeEngine = new MetronomeEngine();
-            metronomeEngine.SetEnabled(Preferences.Default.MetronomeEnabled);
+            metronomeEngine.SetEnabled(Preferences.Default.Metronome);
             editingMix = new MasterAdapter(toneGenerator);
         }
 
@@ -279,13 +279,13 @@ namespace OpenUtau.Core {
         public bool StartingToPlay { get; private set; }
         public bool PlayingMaster { get; private set; }
         public bool LoopPlayback { get; set; }
-        public bool MetronomeEnabled {
+        public bool Metronome {
             get => metronomeEngine.Enabled;
             set {
                 if (metronomeEngine.Enabled == value) {
                     return;
                 }
-                Preferences.Default.MetronomeEnabled = value;
+                Preferences.Default.Metronome = value;
                 Preferences.Save();
                 metronomeEngine.SetEnabled(
                     value,
@@ -630,7 +630,7 @@ namespace OpenUtau.Core {
                 cmd is DelTempoChangeCommand ||
                 cmd is AddTimeSigCommand ||
                 cmd is DelTimeSigCommand) {
-                if (PlayingMaster && MetronomeEnabled) {
+                if (PlayingMaster && Metronome) {
                     metronomeEngine.UpdateSchedule(DocManager.Inst.Project.timeAxis, DocManager.Inst.playPosTick);
                 }
             } else if (cmd is LoadProjectNotification) {

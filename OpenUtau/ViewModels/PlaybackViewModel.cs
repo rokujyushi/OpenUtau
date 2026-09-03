@@ -16,12 +16,12 @@ namespace OpenUtau.App.ViewModels {
         public int Resolution => Project.resolution;
         public int PlayPosTick => DocManager.Inst.playPosTick;
         public TimeSpan PlayPosTime => TimeSpan.FromMilliseconds((int)Project.timeAxis.TickPosToMsPos(DocManager.Inst.playPosTick));
-        public bool MetronomeEnabled {
-            get => PlaybackManager.Inst.MetronomeEnabled;
+        public bool Metronome {
+            get => PlaybackManager.Inst.Metronome;
             set {
-                if (PlaybackManager.Inst.MetronomeEnabled != value) {
-                    PlaybackManager.Inst.MetronomeEnabled = value;
-                    this.RaisePropertyChanged(nameof(MetronomeEnabled));
+                if (PlaybackManager.Inst.Metronome != value) {
+                    PlaybackManager.Inst.Metronome = value;
+                    this.RaisePropertyChanged(nameof(Metronome));
                 }
             }
         }
