@@ -30,6 +30,7 @@ using Serilog;
 using SharpCompress;
 using Path = System.IO.Path;
 using Point = Avalonia.Point;
+using System.Runtime.InteropServices;
 
 namespace OpenUtau.App.Views {
     public partial class MainWindow : Window, ICmdSubscriber {
@@ -244,7 +245,8 @@ namespace OpenUtau.App.Views {
                 FilePicker.UST,
                 FilePicker.MIDI,
                 FilePicker.UFDATA,
-                FilePicker.MUSICXML);
+                FilePicker.MUSICXML,
+                FilePicker.SVP);
             if (files == null || files.Length == 0) {
                 return;
             }
@@ -273,19 +275,40 @@ namespace OpenUtau.App.Views {
 
         void OnMenuOpenProjectLocation(object sender, RoutedEventArgs args) {
             var project = DocManager.Inst.Project;
-            if (string.IsNullOrEmpty(project.FilePath) || !project.Saved) {
+            if (string.IsNullOrEmpty(project.FilePath) || !project.Saved || !System.IO.File.Exists(project.FilePath) || !Path.IsPathRooted(project.FilePath)) {
                 MessageBox.Show(
                     this,
                     ThemeManager.GetString("dialogs.export.savefirst"),
                     ThemeManager.GetString("errors.caption"),
                     MessageBox.MessageBoxButtons.Ok);
+                return;
             }
             try {
-                var dir = Path.GetDirectoryName(project.FilePath);
-                if (dir != null) {
-                    OS.OpenFolder(dir);
+                var fullPath = Path.GetFullPath(project.FilePath);
+                var dir = Path.GetDirectoryName(fullPath);
+                if (!string.IsNullOrWhiteSpace(dir) && System.IO.Directory.Exists(dir)) {
+                    // Cross-platform folder opening
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo {
+                            FileName = "explorer.exe",
+                            Arguments = $"\"{dir}\"", // Quotes protect spaces and commas
+                            UseShellExecute = true
+                        });
+                    } else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo {
+                            FileName = "open",
+                            Arguments = $"\"{dir}\"",
+                            UseShellExecute = false
+                        });
+                    } else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo {
+                            FileName = "xdg-open",
+                            Arguments = $"\"{dir}\"",
+                            UseShellExecute = false
+                        });
+                    }
                 } else {
-                    Log.Error($"Failed to get project location from {dir}.");
+                    Log.Error($"Failed to get project location from {project.FilePath}.");
                 }
             } catch (Exception e) {
                 Log.Error(e, "Failed to open project location.");
@@ -340,7 +363,8 @@ namespace OpenUtau.App.Views {
                 FilePicker.UST,
                 FilePicker.MIDI,
                 FilePicker.UFDATA,
-                FilePicker.MUSICXML);
+                FilePicker.MUSICXML,
+                FilePicker.SVP);
             if (files == null || files.Length == 0) {
                 return;
             }
@@ -900,7 +924,7 @@ namespace OpenUtau.App.Views {
         }
 
         async void OnDrop(object? sender, DragEventArgs args) {
-            string[] ProjectExts = { ".ustx", ".ust", ".vsqx", ".ufdata", ".musicxml", ".mid", ".midi" };
+            string[] ProjectExts = { ".ustx", ".ust", ".vsqx", ".ufdata", ".musicxml", ".mid", ".midi", ".svp" };
             string[] ArchiveExts = { ".zip", ".rar", ".uar" };
             string[] AudioExts = { ".mp3", ".wav", ".ogg", ".flac" };
             string[] SupportedExts = ProjectExts
