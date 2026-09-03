@@ -21,11 +21,17 @@ namespace OpenUtau.App.Views {
                 .Subscribe(_ => UpdateLogo())
                 .DisposeWith(disposable);
             this.Cursor = new Cursor(StandardCursorType.AppStarting);
+            // Screens are not populated yet when Opened fires on X11 and
+            // Wayland, so retry on activation changes until they are. This
+            // fires several times per launch (GetObservable also pushes the
+            // current value on subscribe), so Start() is guarded to run once.
             this.GetObservable(Window.IsActiveProperty)
-                .Subscribe(_ => SplashWindow_Opened());
+                .Subscribe(_ => SplashWindow_Opened())
+                .DisposeWith(disposable);
         }
 
         private readonly MultipleDisposable disposable = new();
+        private bool started;
 
         private void UpdateLogo() {
             LogoTypeDark.IsVisible = ThemeManager.IsDarkMode;
@@ -37,9 +43,10 @@ namespace OpenUtau.App.Views {
         }
 
         private void SplashWindow_Opened() {
-            if (Screens.Primary == null && Screens.ScreenCount == 0) {
+            if (started || (Screens.Primary == null && Screens.ScreenCount == 0)) {
                 return;
             }
+            started = true;
 
             Start();
         }
