@@ -36,11 +36,16 @@ namespace OpenUtau.App.Views {
             disposable.Dispose();
         }
 
+        private bool started;
+
         private void SplashWindow_Opened() {
+            if (started) {
+                return;
+            }
             if (Screens.Primary == null && Screens.ScreenCount == 0) {
                 return;
             }
-
+            started = true;
             Start();
         }
 
