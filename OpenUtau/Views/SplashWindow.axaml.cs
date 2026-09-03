@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input;
-using OpenUtau.App;
 using OpenUtau.Classic;
 using OpenUtau.Core;
 using ReactiveUI;
@@ -21,7 +21,8 @@ namespace OpenUtau.App.Views {
                 .Subscribe(_ => UpdateLogo())
                 .DisposeWith(disposable);
             this.Cursor = new Cursor(StandardCursorType.AppStarting);
-            this.Activated += SplashWindow_Opened;
+            this.GetObservable(Window.IsActiveProperty)
+                .Subscribe(_ => SplashWindow_Opened());
         }
 
         private readonly MultipleDisposable disposable = new();
@@ -35,7 +36,7 @@ namespace OpenUtau.App.Views {
             disposable.Dispose();
         }
 
-        private void SplashWindow_Opened(object? sender, EventArgs e) {
+        private void SplashWindow_Opened() {
             if (Screens.Primary == null && Screens.ScreenCount == 0) {
                 return;
             }
