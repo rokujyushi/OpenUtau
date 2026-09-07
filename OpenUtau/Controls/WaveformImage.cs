@@ -97,37 +97,24 @@ namespace OpenUtau.App.Controls {
                         
                         if (OpenUtau.Core.PlaybackManager.Inst.IsWaveformBlanked) {
                             // sampleData is already empty, so the screen draws a perfect flat line.
-                        }
-                        else if (OpenUtau.Core.PlaybackManager.Inst.StartingToPlay || part.Mix == null) {
-                            foreach (var cacheItem in PlaybackManager.Inst.LiveWaveformCache.Values) {
-                                if (cacheItem.trackNo != part.trackNo) continue;
-                                
-                                double phraseStartMs = cacheItem.posMs;
-                                float[] phraseSamples = cacheItem.samples;
-                                int phraseStartSampleIdx = (int)((phraseStartMs - leftMs) * 44100 / 1000);
-                                
-                                double ageMs = (DateTime.Now - cacheItem.renderTime).TotalMilliseconds;
-                                double animProgress = Math.Clamp(ageMs / 300.0, 0.0, 1.0); 
-                                
-                                if (animProgress < 1.0) needsAnotherFrame = true; 
-                                
-                                float ease = 1.0f - (float)Math.Pow(1.0 - animProgress, 3);
-                                float visualScale = 1.0f * ease; 
-                                
-                                int startJ = Math.Max(0, -phraseStartSampleIdx);
-                                int endJ = Math.Min(phraseSamples.Length, (sampleCount / 2) - phraseStartSampleIdx);
-                                
-                                for (int j = startJ; j < endJ; j++) {
-                                    int targetIdx = (phraseStartSampleIdx + j) * 2; 
-                                    float scaledSample = phraseSamples[j] * visualScale;
-                                    sampleData[targetIdx] += scaledSample;     
-                                    sampleData[targetIdx + 1] += scaledSample; 
+                        } else {
+                            // The part's rendered placements, mixed through the same slot
+                            // arithmetic the transport uses. TryGetPartPcm only returns Ready
+                            // placements, so a part still rendering draws only what has
+                            // finished (empty while nothing is rendered).
+                            var planner = OpenUtau.Core.PlaybackManager.Inst.MixPlanner;
+                            if (planner.TryGetPartPcm(part, out var pcmList)) {
+                                var slots = new OpenUtau.Core.SignalChain.SampleSlot[pcmList.Count];
+                                for (int i = 0; i < pcmList.Count; ++i) {
+                                    var p = pcmList[i];
+                                    slots[i] = new OpenUtau.Core.SignalChain.SampleSlot(
+                                        p.posMs, p.durMs, 0, p.channels, p.pcm,
+                                        OpenUtau.Core.SignalChain.SlotState.Ready);
                                 }
+                                var source = new OpenUtau.Core.SignalChain.SlotMixSource();
+                                source.SetSlots(slots);
+                                source.Mix(samplePos, sampleData, 0, sampleCount);
                             }
-                        }
-                        // THE FINAL MIX 
-                        else {
-                            part.Mix.Mix(samplePos, sampleData, 0, sampleCount);
                         }
 
                         bool isRendering = PlaybackManager.Inst.StartingToPlay;
@@ -143,7 +130,7 @@ namespace OpenUtau.App.Controls {
                         if (snapProgress < 1.0) needsAnotherFrame = true;
 
                         // Phrase audio ranges as [startMs, endMs] pairs, matching
-                        // the WaveSource layout of the mix, so that time ranges
+                        // the slot layout of the mix, so that time ranges
                         // without any phrase are left blank instead of drawing a
                         // zero-volume line. Silence inside a phrase still draws.
                         double[]? phraseRanges = null;
