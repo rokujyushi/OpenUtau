@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -145,7 +145,7 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial bool RememberVsqx { get; set; }
         [Reactive] public partial bool Wayland { get; set; }
         public string WinePath => Preferences.Default.WinePath;
-        [Reactive] public bool DefaultSnapCurve { get; set; }
+        [Reactive] public partial bool DefaultSnapCurve { get; set; }
 
         public PreferencesViewModel() {
             var audioOutput = PlaybackManager.Inst.AudioOutput;

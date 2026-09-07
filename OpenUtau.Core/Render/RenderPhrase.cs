@@ -80,7 +80,7 @@ namespace OpenUtau.Core.Render {
         public readonly UOto oto2;
         public readonly ulong hash;
 
-        internal RenderPhone(UProject project, UTrack track, UVoicePart part, UNote note, UPhoneme phoneme, int phrasePosition, bool xsyAvailable, int noteIndex)) {
+        internal RenderPhone(UProject project, UTrack track, UVoicePart part, UNote note, UPhoneme phoneme, int phrasePosition, bool xsyAvailable, int noteIndex) {
             position = part.position + phoneme.position - phrasePosition;
             duration = phoneme.Duration;
             end = position + duration;

@@ -1352,6 +1352,7 @@ namespace OpenUtau.App.Views {
             }
             if (Preferences.Default.DetachPianoRoll) {
                 PianoRollContainer.Content = null;
+                UpdateLayout();
                 viewModel.ShowPianoRoll = false;
                 if (pianoRollWindow == null) {
                     pianoRollWindow = new(pianoRoll);

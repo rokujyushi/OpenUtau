@@ -50,6 +50,7 @@ namespace OpenUtau.App.Views {
 
         public void ForceClose() {
             PianoRollContainer.Content = null;
+            UpdateLayout();
             forceClose = true;
             Close();
         }
