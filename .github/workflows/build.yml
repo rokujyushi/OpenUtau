@@ -160,7 +160,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_26.2.app
           chmod +x .github/scripts/add-liquid-glass-icon.sh
           .github/scripts/add-liquid-glass-icon.sh \
-            bin/${{ matrix.arch.name }}/publish/OpenUtau.app \
+            bin/${{ matrix.arch.name }}/publish/OpenUtau-for-NEUTRINO.app \
             OpenUtau/Assets/OpenUtau.icon \
             OpenUtau
         if: ${{ matrix.arch.os == 'osx' }}
@@ -221,10 +221,9 @@ jobs:
           cp OpenUtau/Assets/OpenUtau.png bin/${{ matrix.arch.name }}/.DirIcon
           cp OpenUtau/Assets/AppRun bin/${{ matrix.arch.name }}
           chmod 755 bin/${{ matrix.arch.name }}/AppRun
-          ARCH=${{ matrix.arch.linuxarch }} linuxdeploy --appdir bin/${{ matrix.arch.name }} --output appimage
-          # linuxdeploy names the output by linux arch (OpenUtau-x86_64.AppImage);
-          # rename to the matrix name so artifact, file, and release all match.
-          mv OpenUtau-${{ matrix.arch.linuxarch }}.AppImage OpenUtau-${{ matrix.arch.name }}.AppImage
+          # $OUTPUT pins the AppImage filename; without it the name comes from
+          # the desktop file's Name= and would not match the matrix name.
+          OUTPUT=OpenUtau-${{ matrix.arch.name }}.AppImage ARCH=${{ matrix.arch.linuxarch }} linuxdeploy --appdir bin/${{ matrix.arch.name }} --output appimage
         if: ${{ matrix.arch.os == 'linux' }}
 
       # Always upload so successful legs keep their artifacts even when the
@@ -270,13 +269,7 @@ jobs:
           name: OpenUtau-win-x64.zip
       - uses: actions/download-artifact@v4
         with:
-          name: OpenUtau-win-x64.exe
-      - uses: actions/download-artifact@v4
-        with:
           name: OpenUtau-win-arm64.zip
-      - uses: actions/download-artifact@v4
-        with:
-          name: OpenUtau-win-arm64.exe
       - uses: actions/download-artifact@v4
         with:
           name: OpenUtau-osx-arm64.dmg
@@ -297,9 +290,7 @@ jobs:
       - name: Appcast
         run: |
           python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=windows -r=win-x64 -f=OpenUtau-win-x64.zip
-          python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=windows -r=win-x64-installer -f=OpenUtau-win-x64.exe
           python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=windows -r=win-arm64 -f=OpenUtau-win-arm64.zip
-          python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=windows -r=win-arm64-installer -f=OpenUtau-win-arm64.exe
           python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=macos -r=osx-arm64 -f=OpenUtau-osx-arm64.dmg
           python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=linux -r=linux-x64 -f=OpenUtau-linux-x64.tar.gz
           python appcast.py -v=${{ needs.next-version.outputs.version }} --tag=${{ needs.next-version.outputs.tag }} -o=linux -r=linux-arm64 -f=OpenUtau-linux-arm64.tar.gz
@@ -315,7 +306,6 @@ jobs:
           files: |
             appcast.*.xml
             OpenUtau-*.zip
-            OpenUtau-*.exe
             OpenUtau-*.dmg
             OpenUtau-*.tar.gz
             OpenUtau-*.AppImage
