@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -500,12 +499,33 @@ namespace OpenUtau.Core.Hts {
             };
         }
 
-        public abstract Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender);
+        public virtual bool ShouldMergePhrases(UProject project, UTrack track, UPhoneme prev, UPhoneme next) {
+            if (prev == null || next == null) return false;
+            if (timeAxis == null) {
+                timeAxis = project.timeAxis;
+            }
+            var sig = timeAxis.TimeSignatureAtTick(prev.End);
+            double barMs = 60000.0 / timeAxis.GetBpmAtTick(prev.End) * sig.beatPerBar;
+            return next.PositionMs - prev.EndMs < barMs * 2;   // tail 1小節 + head 1小節
+        }
+
+        public abstract Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender = false, RenderPhraseEvents? renderEvents = null);
 
         public abstract UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings);
 
         public abstract override string ToString();
 
+        public virtual bool SupportsRealCurve => false;
+
         public abstract RenderPitchResult LoadRenderedPitch(RenderPhrase phrase);
+        public virtual RenderPitchResult LoadRenderedPitch(RenderPhrase phrase, HashSet<int> selectedNotePositions) {
+            return LoadRenderedPitch(phrase);
+        }
+
+        public virtual List<RenderRealCurveResult> LoadRenderedRealCurves(RenderPhrase phrase) {
+            return new List<RenderRealCurveResult>(0);
+        }
+
+        public virtual void ScheduleRealCurveRefresh(UProject project, UVoicePart part, UCommand command) { }
     }
 }
