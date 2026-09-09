@@ -110,6 +110,7 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial bool ShowGhostNotes { get; set; }
         [Reactive] public partial bool NoteHoverGlow { get; set; }
         [Reactive] public partial bool ShowPlaybackNoteHighlight { get; set; }
+        [Reactive] public partial bool ShowPlaybackNoteBounce { get; set; }
         [Reactive] public partial bool DetachPianoRoll { get; set; }
         [Reactive] public partial bool ThemeEditable { get; set; }
         public List<string> ThemeItems => ThemeManager.GetAvailableThemes();
@@ -182,8 +183,9 @@ namespace OpenUtau.App.ViewModels {
             OnnxRunner = String.IsNullOrEmpty(Preferences.Default.OnnxRunner) ?
                OnnxRunnerOptions[0] : Preferences.Default.OnnxRunner;
             OnnxGpuOptions = Onnx.getGpuInfo();
-            OnnxGpu = OnnxGpuOptions.FirstOrDefault(x => x.deviceId == Preferences.Default.OnnxGpu, OnnxGpuOptions[0]);
-            ShowOnnxGpu = OnnxRunner == "DirectML";
+            OnnxGpu = OnnxGpuOptions.Count > 0
+                ? OnnxGpuOptions.FirstOrDefault(x => x.deviceId == Preferences.Default.OnnxGpu, OnnxGpuOptions[0])
+                : new GpuInfo();            ShowOnnxGpu = (OnnxRunner == "DirectML" || OnnxRunner == "CUDA");
             // GAME backend: ONNX is the default, GGML is available when installed.
             // The options list always includes both so the ComboBox UX is stable.
             GameBackend = Preferences.Default.GameBackend switch {
@@ -207,6 +209,7 @@ namespace OpenUtau.App.ViewModels {
             ShowGhostNotes = Preferences.Default.ShowGhostNotes;
             NoteHoverGlow = Preferences.Default.NoteHoverGlow;
             ShowPlaybackNoteHighlight = Preferences.Default.ShowPlaybackNoteHighlight;
+            ShowPlaybackNoteBounce = Preferences.Default.ShowPlaybackNoteBounce;
             DetachPianoRoll = Preferences.Default.DetachPianoRoll;
             Channel = Preferences.Default.Channel switch {
                 "beta" => 1,
@@ -350,6 +353,12 @@ namespace OpenUtau.App.ViewModels {
                     Preferences.Save();
                     MessageBus.Current.SendMessage(new PianorollRefreshEvent("PlaybackNoteHighlight"));
                 });
+            this.WhenAnyValue(vm => vm.ShowPlaybackNoteBounce)
+                .Subscribe(showPlaybackNoteBounce => {
+                    Preferences.Default.ShowPlaybackNoteBounce = showPlaybackNoteBounce;
+                    Preferences.Save();
+                    MessageBus.Current.SendMessage(new PianorollRefreshEvent("PlaybackNoteBounce"));
+                });
             this.WhenAnyValue(vm => vm.DetachPianoRoll)
                 .Subscribe(detachPianoRoll => {
                     Preferences.Default.DetachPianoRoll = detachPianoRoll;
@@ -397,7 +406,7 @@ namespace OpenUtau.App.ViewModels {
                 .Subscribe(index => {
                     Preferences.Default.OnnxRunner = index;
                     Preferences.Save();
-                    ToggleOnnxGpuDisplay(index == "DirectML");
+                    ToggleOnnxGpuDisplay(index == "DirectML" || index == "CUDA");
                 });
             this.WhenAnyValue(vm => vm.OnnxGpu)
                 .Subscribe(index => {
