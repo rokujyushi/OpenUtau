@@ -53,7 +53,7 @@ namespace OpenUtau.Core.Vogen {
             };
         }
 
-        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender = false) {
+        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender = false, RenderPhraseEvents? renderEvents = null) {
             var task = Task.Run(() => {
                 lock (lockObj) {
                     if (cancellation.IsCancellationRequested) {
@@ -81,6 +81,10 @@ namespace OpenUtau.Core.Vogen {
                     }
                     if (result.samples != null) {
                         Renderers.ApplyDynamics(phrase, result);
+                        PlaybackManager.Inst.LiveWaveformCache[phrase.hash.ToString()] = (trackNo, phrase.positionMs - phrase.leadingMs, result.samples, DateTime.Now);
+                        Task.Factory.StartNew(() => {
+                            DocManager.Inst.ExecuteCmd(new WaveformReadyNotification());
+                        }, CancellationToken.None, TaskCreationOptions.None, DocManager.Inst.MainScheduler);
                     }
                     progress.Complete(phrase.phones.Length, progressInfo);
                     return result;
@@ -145,7 +149,7 @@ namespace OpenUtau.Core.Vogen {
                 new DenseTensor<string>(phonemes.ToArray(), new int[] { phonemes.Count })));
             inputs.Add(NamedOnnxValue.CreateFromTensor("phDurs",
                 new DenseTensor<long>(phDurs.ToArray(), new int[] { phonemes.Count })));
-            using (var session = Onnx.getInferenceSession(Data.VogenRes.f0_man, force_cpu:true)) {
+            using (var session = Onnx.getInferenceSession(Data.VogenRes.f0_man, OnnxRunnerChoice.CPU)) {
                 using var outputs = session.Run(inputs);
                 var f0Out = outputs.First().AsTensor<float>();
                 var f0Path = Path.Join(PathManager.Inst.CachePath, $"vog-{phrase.hash:x16}-f0.npy");
@@ -169,7 +173,7 @@ namespace OpenUtau.Core.Vogen {
                 new DenseTensor<float>(breAmp, new int[] { 1, f0.Length })));
             double[,] sp;
             double[,] ap;
-            using (var session = Onnx.getInferenceSession(singer.model, force_cpu:true)) {
+            using (var session = Onnx.getInferenceSession(singer.model, OnnxRunnerChoice.CPU)) {
                 using var outputs = session.Run(inputs);
                 var mgc = outputs.First().AsTensor<float>().Select(f => (double)f).ToArray();
                 var bap = outputs.Last().AsTensor<float>().Select(f => (double)f).ToArray();

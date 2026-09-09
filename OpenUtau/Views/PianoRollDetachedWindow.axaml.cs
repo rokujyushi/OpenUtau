@@ -1,13 +1,17 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Notifications;
+using Avalonia.Input;
 using OpenUtau.App.Controls;
+using OpenUtau.Core;
 using OpenUtau.Core.Util;
 
 namespace OpenUtau.App.Views {
     public partial class PianoRollDetachedWindow : Window {
         private readonly PianoRoll pianoRoll;
         private bool forceClose;
+        private WindowNotificationManager notificationManager;
 
         public PianoRollDetachedWindow(PianoRoll pianoRoll) {
             InitializeComponent();
@@ -20,12 +24,22 @@ namespace OpenUtau.App.Views {
                 Position = new PixelPoint(x, y);
             }
             WindowState = (WindowState)Preferences.Default.PianorollWindowSize.State;
+
+            notificationManager = new WindowNotificationManager(this) {
+                Position = NotificationPosition.BottomCenter,
+                MaxItems = 3
+            };
+        }
+
+        public void WindowGotFocus(object sender, FocusChangedEventArgs e) {
+            if (e.Source is PianoRollDetachedWindow) {
+                pianoRoll.Focus();
+            }
         }
 
         public void WindowClosing(object? sender, WindowClosingEventArgs e) {
-            if (WindowState != WindowState.Maximized) {
-                Preferences.Default.PianorollWindowSize.Set(Width, Height, Position.X, Position.Y, (int)WindowState);
-            }
+            Preferences.Default.PianorollWindowSize.Set(Width, Height, Position.X, Position.Y, (int)WindowState);
+            Preferences.Save();
             Hide();
             e.Cancel = !forceClose;
         }
@@ -40,5 +54,12 @@ namespace OpenUtau.App.Views {
             Close();
         }
 
+        public bool Toast(ToastNotification toast) {
+            if (this.IsActive) {
+                notificationManager.Show(ToastControl.GetNotification(toast, this));
+                return true;
+            }
+            return false;
+        }
     }
 }

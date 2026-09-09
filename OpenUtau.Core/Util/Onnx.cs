@@ -1,4 +1,6 @@
 ﻿using System;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.ML.OnnxRuntime;
@@ -15,7 +17,16 @@ namespace OpenUtau.Core {
         }
     }
 
+    public enum OnnxRunnerChoice {
+        Default,
+        CPU,
+        CPUForCoreML,
+    }
+
     public class Onnx {
+
+        private static bool cudaAvailable = OS.IsLinux() && CudaGpuDetector.IsCudaAvailable() && CudaGpuDetector.IsCuDnnAvailable();
+
         private static readonly Dictionary<int, OrtEpDevice> devices = initializeDevices();
 
         private static Dictionary<int, OrtEpDevice> initializeDevices() {
@@ -39,6 +50,11 @@ namespace OpenUtau.Core {
                 "CPU",
                 "CoreML"
                 };
+            } else if (cudaAvailable) {
+                return new List<string> {
+                "CPU",
+                "CUDA"
+                };
             } else if (OS.IsAndroid()) {
                 return new List<string> {
                 "CPU",
@@ -46,16 +62,21 @@ namespace OpenUtau.Core {
                 };
             }
             return new List<string> {
-                "CPU"
+                "CPU"        
             };
         }
 
         public static List<GpuInfo> getGpuInfo() {
+            if (cudaAvailable) {
+                return CudaGpuDetector.GetCudaDevices();
+            }         
+     
             if (OS.IsAndroid()) {
                 return new List<GpuInfo>{new GpuInfo {
                     deviceId = 0, // eliminate exception of taking OnnxGpuOptions[0]
                 }};
             }
+
             List<GpuInfo> gpuList = new List<GpuInfo>();
             var env = OrtEnv.Instance();
             var ortDevices = env.GetEpDevices();
@@ -78,11 +99,6 @@ namespace OpenUtau.Core {
                     description = description
                 });
             }
-            if (gpuList.Count == 0) {
-                gpuList.Add(new GpuInfo {
-                    deviceId = 0,
-                });
-            }
             return gpuList;
         }
 
@@ -101,8 +117,8 @@ namespace OpenUtau.Core {
                     var d = devices[Preferences.Default.OnnxGpu];
                     options.AppendExecutionProvider(
                         OrtEnv.Instance(),
-                        new List<OrtEpDevice> { d } ,
-                        new Dictionary<string, string> {}
+                        new List<OrtEpDevice> { d },
+                        new Dictionary<string, string> { }
                      );
                     break;
                 case "CoreML":
@@ -111,8 +127,13 @@ namespace OpenUtau.Core {
                     // so we always use NeuralNetwork format (default) as MLProgram fails with complex models.
                     options.AppendExecutionProvider("CoreML", new Dictionary<string, string> {
                         { "MLComputeUnits", "ALL" },
+                        { "RequireStaticInputShapes", "1"},
+                        { "ModelFormat", "NeuralNetwork"},
                         { "EnableOnSubgraphs", coremlEnableOnSubgraphs ? "1" : "0" }  // Disable subgraph processing to avoid complex control flow issues
                     });
+                    break;
+                case "CUDA":
+                    options.AppendExecutionProvider_CUDA(Preferences.Default.OnnxGpu);
                     break;
                 case "NNAPI":
                     options.AppendExecutionProvider_Nnapi();
@@ -121,8 +142,9 @@ namespace OpenUtau.Core {
             return options;
         }
 
-        public static InferenceSession getInferenceSession(byte[] model, bool force_cpu = false) {
-            if (force_cpu) {
+        public static InferenceSession getInferenceSession(byte[] model, OnnxRunnerChoice runnerChoice = OnnxRunnerChoice.Default) {
+            if (runnerChoice == OnnxRunnerChoice.CPU ||
+                (runnerChoice == OnnxRunnerChoice.CPUForCoreML && Preferences.Default.OnnxRunner == "CoreML")) {
                 return new InferenceSession(model);
             } else {
                 // Try with CoreML subgraphs enabled first, fallback to default if it fails
@@ -137,8 +159,9 @@ namespace OpenUtau.Core {
             }
         }
 
-        public static InferenceSession getInferenceSession(string modelPath, bool force_cpu = false) {
-            if (force_cpu) {
+        public static InferenceSession getInferenceSession(string modelPath, OnnxRunnerChoice runnerChoice = OnnxRunnerChoice.Default) {
+            if (runnerChoice == OnnxRunnerChoice.CPU ||
+                (runnerChoice == OnnxRunnerChoice.CPUForCoreML && Preferences.Default.OnnxRunner == "CoreML")) {
                 return new InferenceSession(modelPath);
             } else {
                 // Try with CoreML subgraphs enabled first, fallback to default if it fails
