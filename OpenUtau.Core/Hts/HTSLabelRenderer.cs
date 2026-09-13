@@ -499,16 +499,6 @@ namespace OpenUtau.Core.Hts {
             };
         }
 
-        public virtual bool ShouldMergePhrases(UProject project, UTrack track, UPhoneme prev, UPhoneme next) {
-            if (prev == null || next == null) return false;
-            if (timeAxis == null) {
-                timeAxis = project.timeAxis;
-            }
-            var sig = timeAxis.TimeSignatureAtTick(prev.End);
-            double barMs = 60000.0 / timeAxis.GetBpmAtTick(prev.End) * sig.beatPerBar;
-            return next.PositionMs - prev.EndMs < barMs * 2;   // tail 1小節 + head 1小節
-        }
-
         public abstract Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender = false, RenderPhraseEvents? renderEvents = null);
 
         public abstract UExpressionDescriptor[] GetSuggestedExpressions(USinger singer, URenderSettings renderSettings);
