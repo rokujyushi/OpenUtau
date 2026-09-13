@@ -359,7 +359,8 @@ namespace OpenUtau.Core.Hts {
             var tuples = new List<Tuple<HTSNote, int>>();
             for (int noteIndex = 0; noteIndex < phrase.notes.Length; noteIndex++) {
                 var note = phrase.notes[noteIndex];
-                if (phonemesByNoteIndex.TryGetValue(noteIndex, out var phonemes)) {
+                // phone.noteIndex はパート全体の番号なので、phrase.notes の番号から変換して引く
+                if (phonemesByNoteIndex.TryGetValue(phrase.noteIndexes[noteIndex], out var phonemes)) {
                     foreach (var phone in phonemes) {
                         var phoneStartMs = headMs + (phone.positionMs - phrase.positionMs);
                         var phoneEndMs = headMs + (phone.endMs - phrase.positionMs);
@@ -378,7 +379,7 @@ namespace OpenUtau.Core.Hts {
                     lastBasePhonemes = phonemes;
                     HTSNote htsNote = makeHtsNote(phonemes.Select(phone => phone.phoneme).ToArray(), note, startTick, headMs);
                     tuples.Add(Tuple.Create(htsNote, noteIndex));
-                } else if (IsSyllableVowelExtensionNote(note)) {
+                } else if (IsSyllableVowelExtensionNote(note) && lastBasePhonemes.Length > 0) {
                     // 拍点延長ノートは、直前の通常ノートの最後の母音を引き延ばす
                     var extensionPhoneme = FindLastVowelOrLastPhoneme(lastBasePhonemes);
                     if (!string.IsNullOrEmpty(extensionPhoneme.phoneme)) {
