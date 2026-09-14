@@ -22,7 +22,7 @@ namespace OpenUtau.Plugins {
         /// Runs the phonemizer with a real UVoicePart so unotes is populated and
         /// convel is active. Returns vel values in phoneme order.
         /// </summary>
-        float[] RunConvelTest(string singerName, string[] lyrics, int[] durations) {
+        float[] RunConvelTest(string singerName, string[] lyrics, int[] durations, float? defaultVel = null) {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             var file = Path.Join(dir, "Files", singerName, "character.txt");
@@ -35,6 +35,9 @@ namespace OpenUtau.Plugins {
 
             var project = new UProject();
             Ustx.AddDefaultExpressions(project);
+            if (defaultVel.HasValue) {
+                project.expressions[Ustx.VEL].CustomDefaultValue = defaultVel.Value;
+            }
             var track = project.tracks[0];
             project.expressions.TryGetValue(Ustx.CLR, out var colorDescriptor);
             track.VoiceColorExp = colorDescriptor.Clone();
@@ -161,6 +164,34 @@ namespace OpenUtau.Plugins {
             var vels = RunConvelTest("en_vccv", new[] { "a" }, new[] { duration });
             Assert.All(vels, v => Assert.Equal(expectedVel, v, precision: 1));
         }
-        
+
+        // The default velocity shifts the whole curve by (default - 100).
+        // default 50: duration 240 → 100,  480 → 50,  960 → 0
+        [Theory]
+        [InlineData(240, 100f)]
+        [InlineData(480, 50f)]
+        [InlineData(960, 0f)]
+        public void ConvelShiftsWithDefaultVel(int duration, float expectedVel) {
+            var vels = RunConvelTest("en_vccv", new[] { "a" }, new[] { duration }, defaultVel: 50);
+            Assert.All(vels, v => Assert.Equal(expectedVel, v, precision: 1));
+        }
+
+        // Shifting must not break continuity at the 480-tick boundary.
+        [Fact]
+        public void ConvelIsContinuousAt480WithDefaultVel() {
+            var below = RunConvelTest("en_vccv", new[] { "a" }, new[] { 479 }, defaultVel: 50);
+            var at = RunConvelTest("en_vccv", new[] { "a" }, new[] { 480 }, defaultVel: 50);
+            Assert.InRange(Math.Abs(below[0] - at[0]), 0f, 1f);
+        }
+
+        // The shifted value is clamped to the vel expression range.
+        [Theory]
+        [InlineData(240, 200f, 200f)]
+        [InlineData(960, 0f, 0f)]
+        public void ConvelWithDefaultVelIsClamped(int duration, float defaultVel, float expectedVel) {
+            var vels = RunConvelTest("en_vccv", new[] { "a" }, new[] { duration }, defaultVel);
+            Assert.All(vels, v => Assert.Equal(expectedVel, v, precision: 1));
+        }
+
     }
 }
