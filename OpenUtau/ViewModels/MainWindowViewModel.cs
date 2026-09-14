@@ -457,6 +457,20 @@ namespace OpenUtau.App.ViewModels {
             }
         }
 
+        private static void NotifyRemovedCurves(UProject project) {
+            if (project.RemovedCurves.Count == 0) {
+                return;
+            }
+            string curves = string.Join(", ", project.RemovedCurves);
+            project.RemovedCurves.Clear();
+            // Post so that the toast is shown after all subscribers have handled the load.
+            Dispatcher.UIThread.Post(() => DocManager.Inst.ExecuteCmd(
+                new ToastNotification("MainWindow", $"Removed curves with unknown expression: {curves}", "warning.removedcurves") {
+                    durationSec = 0,
+                    args = new object[] { curves },
+                }));
+        }
+
         #region ICmdSubscriber
 
         public void OnNext(UCommand cmd, bool isUndo) {
@@ -467,6 +481,7 @@ namespace OpenUtau.App.ViewModels {
                 }, DispatcherPriority.Background);
             } else if (cmd is LoadProjectNotification loadProject) {
                 Preferences.AddRecentFileIfEnabled(loadProject.project.FilePath);
+                NotifyRemovedCurves(loadProject.project);
             } else if (cmd is SaveProjectNotification saveProject) {
                 Preferences.AddRecentFileIfEnabled(saveProject.Path);
             }

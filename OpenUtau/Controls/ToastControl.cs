@@ -8,6 +8,9 @@ namespace OpenUtau.App.Controls {
     public static class ToastControl {
         public static Notification GetNotification(ToastNotification notif, Window window) {
             var message = ThemeManager.GetString(notif.translationKey);
+            if (notif.args != null && notif.args.Length > 0) {
+                message = string.Format(message, notif.args);
+            }
             var type = NotificationType.Warning;
             switch (notif.type) {
                 case "Information":

@@ -54,6 +54,10 @@ namespace OpenUtau.Core {
         /// Toast display time. If 0 is specified, it will not close automatically.
         /// </summary>
         public long durationSec = 4;
+        /// <summary>
+        /// Arguments formatted into the text ({0}, {1}, ...).
+        /// </summary>
+        public object[]? args;
         public Exception? e;
 
         /// <summary>

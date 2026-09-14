@@ -71,6 +71,12 @@ namespace OpenUtau.Core.Ustx {
 
         [YamlIgnore] public readonly TimeAxis timeAxis = new TimeAxis();
 
+        /// <summary>
+        /// Curves removed while loading because their expression is not defined ("part: abbr").
+        /// Consumed by the UI to notify the user after the project is loaded.
+        /// </summary>
+        [YamlIgnore] public List<string> RemovedCurves { get; } = new List<string>();
+
         public UProject() {
             timeSignatures = new List<UTimeSignature> { new UTimeSignature(0, 4, 4) };
             tempos = new List<UTempo> { new UTempo(0, 120) };

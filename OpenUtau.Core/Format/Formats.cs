@@ -176,6 +176,7 @@ namespace OpenUtau.Core.Format {
                     project.parts.Add(part);
                     part.trackNo += trackCount;
                 }
+                project.RemovedCurves.AddRange(loaded.RemovedCurves);
             }
             if (importTempo) {
                 var loaded = loadedProjects[0];

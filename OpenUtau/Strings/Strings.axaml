@@ -911,6 +911,7 @@ General
 
   <system:String x:Key="warning">Warning</system:String>
   <system:String x:Key="warning.asciipath">Your OpenUtau home path "{0}" contains non-ASCII character. Exe resamplers may not work.</system:String>
+  <system:String x:Key="warning.removedcurves">The following curves were removed because their expressions are not defined in the project. They will be lost when you save: {0}</system:String>
   <system:String x:Key="warning.renderer">No settings for this renderer.</system:String>
 
   <system:String x:Key="welcome.new">New</system:String>
