@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reactive;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,45 +9,47 @@ using Avalonia.Media.Imaging;
 using DynamicData.Binding;
 using NAudio.Wave;
 using NWaves.Signals;
+using OpenUtau.Api;
 using OpenUtau.App.Views;
 using OpenUtau.Classic;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.Primitives;
+using ReactiveUI.SourceGenerators;
 using Serilog;
 
 namespace OpenUtau.App.ViewModels {
-    public class SingersViewModel : ViewModelBase {
+    public partial class SingersViewModel : ViewModelBase {
         public IEnumerable<USinger> Singers => SingerManager.Inst.SingerGroups.Values.SelectMany(l => l);
-        [Reactive] public USinger? Singer { get; set; }
-        [Reactive] public Bitmap? Avatar { get; set; }
-        [Reactive] public string? Info { get; set; }
-        [Reactive] public bool HasWebsite { get; set; }
+        [Reactive] public partial USinger? Singer { get; set; }
+        [Reactive] public partial Bitmap? Avatar { get; set; }
+        [Reactive] public partial string? Info { get; set; }
+        [Reactive] public partial bool HasWebsite { get; set; }
         public bool IsClassic => Singer != null && Singer.SingerType == USingerType.Classic;
         public bool UseSearchAlias => Singer != null && (Singer.SingerType == USingerType.Classic || Singer.SingerType == USingerType.Enunu);
         public ObservableCollectionExtended<USubbank> Subbanks => subbanks;
         public ObservableCollectionExtended<UOto> Otos => otos;
         public ObservableCollectionExtended<UOto> DisplayedOtos { get; set; } = new ObservableCollectionExtended<UOto>();
-        [Reactive] public bool ZoomInMel { get; set; }
-        [Reactive] public UOto? SelectedOto { get; set; }
-        [Reactive] public int SelectedIndex { get; set; }
+        [Reactive] public partial bool ZoomInMel { get; set; }
+        [Reactive] public partial UOto? SelectedOto { get; set; }
+        [Reactive] public partial int SelectedIndex { get; set; }
         public List<MenuItemViewModel> SetEncodingMenuItems => setEncodingMenuItems;
         public List<MenuItemViewModel> SetSingerTypeMenuItems => setSingerTypeMenuItems;
         public List<MenuItemViewModel> SetDefaultPhonemizerMenuItems => setDefaultPhonemizerMenuItems;
-        [Reactive] public bool UseFilenameAsAlias { get; set; } = false;
+        [Reactive] public partial bool UseFilenameAsAlias { get; set; } = false;
 
-        [Reactive] public string SearchAlias { get; set; } = "";
+        [Reactive] public partial string SearchAlias { get; set; } = "";
 
         private readonly ObservableCollectionExtended<USubbank> subbanks
             = new ObservableCollectionExtended<USubbank>();
         private readonly ObservableCollectionExtended<UOto> otos
             = new ObservableCollectionExtended<UOto>();
-        private readonly ReactiveCommand<Encoding, Unit> setEncodingCommand;
+        private readonly ReactiveCommand<Encoding, RxVoid> setEncodingCommand;
         private List<MenuItemViewModel> setEncodingMenuItems;
-        private readonly ReactiveCommand<string, Unit> setSingerTypeCommand;
+        private readonly ReactiveCommand<string, RxVoid> setSingerTypeCommand;
         private List<MenuItemViewModel> setSingerTypeMenuItems;
-        private readonly ReactiveCommand<Api.PhonemizerFactory, Unit> setDefaultPhonemizerCommand;
+        private readonly ReactiveCommand<Api.PhonemizerFactory, RxVoid> setDefaultPhonemizerCommand;
         private List<MenuItemViewModel> setDefaultPhonemizerMenuItems;
 
         public SingersViewModel() {
@@ -62,9 +63,9 @@ namespace OpenUtau.App.ViewModels {
                 Singer = Singers.FirstOrDefault();
             }
             this.WhenAnyValue(vm => vm.Singer)
-                .WhereNotNull()
+                .OfType<USinger>()
                 .Subscribe(singer => {
-                    if (MessageBox.LoadingIsActive()) {
+                    if (LoadingWindow.IsLoading()) {
                         try {
                             AttachSinger();
                         } catch (Exception e) {
@@ -107,30 +108,29 @@ namespace OpenUtau.App.ViewModels {
                             Encoding.GetEncoding("macintosh"),
                         };
                         setEncodingMenuItems = encodings.Select(encoding =>
-                            new MenuItemViewModel() {
+                            new MenuItemViewModel(singer.TextFileEncoding == encoding) {
                                 Header = encoding.EncodingName,
                                 Command = setEncodingCommand,
                                 CommandParameter = encoding,
-                                IsChecked = singer.TextFileEncoding == encoding,
                             }
                         ).ToList();
                         var singerTypes = new string[] {
                             "utau", "enunu", "diffsinger", "voicevox"
                         };
                         setSingerTypeMenuItems = singerTypes.Select(singerType =>
-                            new MenuItemViewModel() {
+                            new MenuItemViewModel((SingerTypeUtils.SingerTypeNames.TryGetValue(singer.SingerType, out var name) ? name : "") == singerType) {
                                 Header = singerType,
                                 Command = setSingerTypeCommand,
                                 CommandParameter = singerType,
-                                IsChecked = (SingerTypeUtils.SingerTypeNames.TryGetValue(singer.SingerType, out var name) ? name : "") == singerType,
                             }
                         ).ToList();
-                        setDefaultPhonemizerMenuItems = DocManager.Inst.PhonemizerFactories.Select(factory => new MenuItemViewModel() {
-                            Header = factory.ToString(),
-                            Command = setDefaultPhonemizerCommand,
-                            CommandParameter = factory,
-                            IsChecked = singer.DefaultPhonemizer == factory.type.FullName,
-                        }).ToList();
+                        setDefaultPhonemizerMenuItems = PhonemizerFactory.GetAll().Select(factory => 
+                            new MenuItemViewModel(singer.DefaultPhonemizer == factory.type.FullName) {
+                                Header = factory.ToString(),
+                                Command = setDefaultPhonemizerCommand,
+                                CommandParameter = factory,
+                            }
+                        ).ToList();
                         this.RaisePropertyChanged(nameof(SetEncodingMenuItems));
                         this.RaisePropertyChanged(nameof(SetSingerTypeMenuItems));
                         this.RaisePropertyChanged(nameof(SetDefaultPhonemizerMenuItems));
@@ -521,7 +521,7 @@ namespace OpenUtau.App.ViewModels {
                         if (samples != null) {
                             int f0Method;
                             switch (method) {
-                                case "dioss":
+                                case "harvest":
                                     f0Method = 1;
                                     break;
                                 case "pyin":

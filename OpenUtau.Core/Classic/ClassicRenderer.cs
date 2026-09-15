@@ -20,7 +20,8 @@ namespace OpenUtau.Classic {
             Ustx.DYN,
             Ustx.PITD,
             Ustx.CLR,
-            Ustx.SHFT,
+            Ustx.CLRY,
+            Ustx.XSY,
             Ustx.ENG,
             Ustx.VEL,
             Ustx.VOL,
@@ -29,12 +30,13 @@ namespace OpenUtau.Classic {
             Ustx.MOD,
             Ustx.MODP,
             Ustx.ALT,
+            Ustx.DIR,
+            Ustx.SHFT
         };
 
         public USingerType SingerType => USingerType.Classic;
 
         public bool SupportsRenderPitch => false;
-
         public bool SupportsExpression(UExpressionDescriptor descriptor) {
             return descriptor.isFlag
                 || !string.IsNullOrEmpty(descriptor.flag)
@@ -49,7 +51,7 @@ namespace OpenUtau.Classic {
             };
         }
 
-        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender) {
+        public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender, RenderPhraseEvents? renderEvents = null) {
             if (phrase.wavtool == SharpWavtool.nameConvergence || phrase.wavtool == SharpWavtool.nameSimple) {
                 return RenderInternal(phrase, progress, trackNo, cancellation, isPreRender);
             } else {

@@ -1,17 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.RegularExpressions;
 using DynamicData.Binding;
 using OpenUtau.Core;
 using OpenUtau.Core.Ustx;
 using ReactiveUI;
-using ReactiveUI.Fody.Helpers;
+using ReactiveUI.Primitives;
+using ReactiveUI.SourceGenerators;
 
 namespace OpenUtau.App.ViewModels {
-    class LyricsReplaceViewModel : ViewModelBase {
-        [Reactive] public string OldValue { get; set; } = "";
-        [Reactive] public string NewValue { get; set; } = "";
-        [Reactive] public string Preview { get; set; } = "";
+    partial class LyricsReplaceViewModel : ViewModelBase {
+        [Reactive] public partial string OldValue { get; set; } = "";
+        [Reactive] public partial string NewValue { get; set; } = "";
+        [Reactive] public partial string Preview { get; set; } = "";
         public List<ReplacePreset> PresetList { get; } = new List<ReplacePreset>() { //Increase!
             new ReplacePreset("-", "", ""),
             new ReplacePreset(ThemeManager.GetString("lyricsreplace.preset.rmvalphabet"), @"[a-zA-Z]", ""),
@@ -20,19 +22,19 @@ namespace OpenUtau.App.ViewModels {
             new ReplacePreset(ThemeManager.GetString("lyricsreplace.preset.rmvtone"), @"_?[A-G](#|b)?[1-7]", ""),
             new ReplacePreset(ThemeManager.GetString("lyricsreplace.preset.rmvspace"), ".* ", "")
         };
-        [Reactive] public ReplacePreset SelectedPreset { get; set; } = new ReplacePreset();
+        [Reactive] public partial ReplacePreset SelectedPreset { get; set; } = new ReplacePreset();
         public string[] Lyrics { get; private set; }
 
         private UVoicePart part;
         private UNote[] notes;
         private string[] startLyrics;
 
-        public LyricsReplaceViewModel(UVoicePart part, UNote[] notes, string[] lyrics) {
+        public LyricsReplaceViewModel(UVoicePart part, UNote[] notes) {
             this.part = part;
             this.notes = notes;
-            startLyrics = (string[])lyrics.Clone();
-            Preview = string.Join(", ", lyrics);
-            Lyrics = lyrics;
+            startLyrics = notes.Select(n => n.lyric).ToArray();
+            Preview = string.Join(", ", startLyrics);
+            Lyrics = (string[])startLyrics.Clone();
 
             this.WhenAnyValue(x => x.OldValue, x => x.NewValue)
                 .Subscribe(t => {
@@ -42,11 +44,11 @@ namespace OpenUtau.App.ViewModels {
                         Preview = ThemeManager.GetString("errors.lyrics.regexpreview");
                     }
                 });
-            this.WhenValueChanged(x => SelectedPreset)
+            this.WhenAnyValue(x => x.SelectedPreset)
                 .Subscribe(p => {
-                    if (SelectedPreset != null) {
-                        OldValue = SelectedPreset.OldValue;
-                        NewValue = SelectedPreset.NewValue;
+                    if (p != null) {
+                        OldValue = p.OldValue;
+                        NewValue = p.NewValue;
                     }
                 });
         }
@@ -67,7 +69,7 @@ namespace OpenUtau.App.ViewModels {
                 return false;
             }
 
-            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.StartUndoGroup("command.batch.lyric");
             for (int i = 0; i < Lyrics.Length && i < notes.Length; ++i) {
                 if (notes[i].lyric != Lyrics[i]) {
                     DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(part, notes[i], Lyrics[i]));

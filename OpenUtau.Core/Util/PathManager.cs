@@ -41,10 +41,14 @@ namespace OpenUtau.Core {
                 CachePath = Path.Combine(cacheHome, "OpenUtau");
                 HomePathIsAscii = true;
             } else {
-                string exePath = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
-                IsInstalled = File.Exists(Path.Combine(exePath, "installed.txt"));
+                // AppContext.BaseDirectory correctly resolves to the application's output
+                // directory in both normal execution (portable/installed mode) and during
+                // dotnet test, unlike Process.MainModule which points to testhost.exe
+                // during tests.
+                string appDir = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
+                IsInstalled = File.Exists(Path.Combine(appDir, "installed.txt"));
                 if (!IsInstalled) {
-                    DataPath = exePath;
+                    DataPath = appDir;
                 } else {
                     string dataHome = Environment.GetFolderPath(Environment.SpecialFolder.Personal);
                     DataPath = Path.Combine(dataHome, "OpenUtau");
@@ -83,6 +87,7 @@ namespace OpenUtau.Core {
         public string LogsPath => Path.Combine(DataPath, "Logs");
         public string LogFilePath => Path.Combine(DataPath, "Logs", "log.txt");
         public string PrefsFilePath => Path.Combine(DataPath, "prefs.json");
+        public string ThemesPath => Path.Combine(DataPath, "Themes");
         public string NotePresetsFilePath => Path.Combine(DataPath, "notepresets.json");
         public string BackupsPath => Path.Combine(DataPath, "Backups");
 
@@ -140,6 +145,10 @@ namespace OpenUtau.Core {
                     Log.Error(e, $"Failed to delete dir {dir}");
                 }
             }
+            OpenUtau.Core.PlaybackManager.Inst.StopPlayback();
+            // Drop the slot registry's cache and session: everything below is re-rendered.
+            OpenUtau.Core.PlaybackManager.Inst.MixPlanner.Clear();
+            OpenUtau.Core.DocManager.Inst.ExecuteCmd(new OpenUtau.Core.WaveformReadyNotification());
         }
 
         readonly static string[] sizes = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };

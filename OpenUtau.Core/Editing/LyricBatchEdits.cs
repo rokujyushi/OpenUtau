@@ -1,7 +1,10 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using OpenUtau.Api;
+using OpenUtau.Core.Format.MusicXMLSchema;
 using OpenUtau.Core.Ustx;
+using Serilog;
 using WanaKanaNet;
 
 namespace OpenUtau.Core.Editing {
@@ -14,7 +17,7 @@ namespace OpenUtau.Core.Editing {
                 return;
             }
             var lyrics = notes.Select(note => Transform(note.lyric)).ToArray();
-            docManager.StartUndoGroup(true);
+            docManager.StartUndoGroup("command.batch.lyric", true);
             docManager.ExecuteCmd(new ChangeNoteLyricCommand(part, notes, lyrics));
             docManager.EndUndoGroup();
         }
@@ -130,7 +133,7 @@ namespace OpenUtau.Core.Editing {
             suffixes.Sort((a, b) => b.Length - a.Length);
 
             // Set lyric and color
-            docManager.StartUndoGroup(true);
+            docManager.StartUndoGroup("command.batch.lyric", true);
             foreach (var note in notes) {
                 foreach (var suffix in suffixes) {
                     if (note.lyric.Contains(suffix)) {
@@ -145,6 +148,84 @@ namespace OpenUtau.Core.Editing {
             }
             docManager.EndUndoGroup();
         }
+    }
+
+    public class AddPhoneticHints : BatchEdit {
+        public virtual string Name => name;
+        private string name;
+        static readonly Regex phoneticHintPattern = new Regex(@"\[(.*)\]");
+        static readonly List<string> ignoreList = new List<string>(new string[] {"R", "br", "AP", "SP", "cl", "息", "吸"});
+
+        public AddPhoneticHints() {
+            name = "pianoroll.menu.lyrics.addphonetichints";
+        }
+
+        public void Run(UProject project, UVoicePart part, List<UNote> selectedNotes, DocManager docManager) {
+            var notes = selectedNotes.Count > 0 ? selectedNotes.ToArray() : part.notes.ToArray();
+            if (notes.Length == 0) {
+                return; // make no edits if no notes exist
+            }
+            //string lyric = notes[0].lyric + "[ka]";
+            var track = project.tracks[part.trackNo];
+            var phonemizer = track.Phonemizer;
+            if (phonemizer == null) return;
+
+
+            docManager.StartUndoGroup("command.batch.lyric", true);
+            foreach (var note in notes) {
+                if (phoneticHintPattern.IsMatch(note.lyric) || note.lyric.StartsWith("+")) { // break out of loop for notes with hint
+                    continue;
+                }
+
+                // note.tone = -1; prevent tone from interfering from phonemizer output.
+                var constructNote = note.ToPhonemizerNote(track, part);
+                // reconstruct Note so that we can isolate response from phonemizer.
+
+                if (phonemizer is IG2pSymbols sym) {
+                    var phonemeList = sym.GetSymbols(constructNote);
+                    string lyric = note.lyric + " [" + string.Join(" ", phonemeList) + "]";
+                    if (lyric == "[]") {
+                        lyric = note.lyric;
+                    }
+                    docManager.ExecuteCmd(new ChangeNoteLyricCommand(part, note, lyric));
+                } else {
+
+                    // fallback behaviour given phonemizer is neither SBP not PBP instance.
+                    // splits the note at each phoneme boundary and assigns the phonemizer's
+                    // original (unoverridden) alias to the resulting note as its lyric.
+
+                    var phonemeList = part.phonemes
+                    .Where(p => note.phonemeIndexes.Contains(p.index) && p.position >= note.position && p.position < (note.position + note.duration))
+                    .OrderBy(p => p.position)
+                    .ToList();
+
+                    if (phonemeList.Count == 0) {
+                        continue;
+                    }
+
+                    var currentNote = note;
+                    for (int i = 1; i < phonemeList.Count; i++) {
+                        int splitPos = phonemeList[i].position;
+
+                        var newNote = project.CreateNote(currentNote.tone, splitPos, currentNote.End - splitPos);
+                        docManager.ExecuteCmd(new AddNoteCommand(part, newNote));
+                        foreach (var exp in currentNote.phonemeExpressions.OrderBy(exp => exp.index)) {
+                            docManager.ExecuteCmd(new SetNoteExpressionCommand(project, track, part, newNote, exp.abbr, new float?[] { exp.value }));
+                        }
+                        docManager.ExecuteCmd(new ResizeNoteCommand(part, currentNote, splitPos - currentNote.End));
+                        docManager.ExecuteCmd(new ChangeNoteLyricCommand(part, currentNote, phonemeList[i - 1].rawPhoneme));
+
+                        currentNote = newNote;
+                    }
+                    docManager.ExecuteCmd(new ChangeNoteLyricCommand(part, currentNote, note.lyric + " [" + phonemeList[phonemeList.Count - 1].rawPhoneme + ']'));
+                }
+            }
+
+            docManager.EndUndoGroup();
+
+
+        }
+
     }
 
     public class RemovePhoneticHint : SingleNoteLyricEdit {
@@ -185,6 +266,7 @@ namespace OpenUtau.Core.Editing {
     public class InsertSlur : BatchEdit{
         public virtual string Name => name;
         private string name;
+        
 
         public InsertSlur() {
             name = "pianoroll.menu.lyrics.insertslur";
@@ -196,7 +278,7 @@ namespace OpenUtau.Core.Editing {
             }
             var startPos = selectedNotes.First().position;
             Queue<string> lyricsQueue = new Queue<string>();
-            docManager.StartUndoGroup(true);
+            docManager.StartUndoGroup("command.batch.lyric", true);
             foreach(var note in part.notes.Where(n => n.position >= startPos)){
                 lyricsQueue.Enqueue(note.lyric);
                 if(selectedNotes.Contains(note)){

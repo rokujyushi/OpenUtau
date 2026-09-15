@@ -162,7 +162,7 @@ namespace OpenUtau.Core.Ustx {
         }
         public static List<UCurve> MergeCurves(params List<UCurve>[] merging) {
             var merged = new Dictionary<UExpressionDescriptor, UCurve>();
-            merging.ForEach(curves => {
+            foreach (var curves in merging) {
                 foreach (var curve in curves) {
                     if (curve.descriptor == null) continue;
                     if (!merged.TryGetValue(curve.descriptor, out var existing)) {
@@ -177,8 +177,174 @@ namespace OpenUtau.Core.Ustx {
                         existing.ys = zipped.Select(z => z.y).ToList();
                     }
                 }
-            });
+            }
             return merged.Values.ToList();
+        }
+
+        /// <summary>
+        /// Returns a copy of the points with every point in [clearMinX, clearMaxX] removed and the given points inserted.
+        /// An inserted point overwrites any point at the same tick. The input lists are not modified.
+        /// Anchor points are added <see cref="interval"/> ticks outside the range so that the curve
+        /// outside [clearMinX - interval, clearMaxX + interval] keeps its original values.
+        /// </summary>
+        public static (int[] xs, int[] ys) ReplaceRange(
+            IReadOnlyList<int> xs,
+            IReadOnlyList<int> ys,
+            int clearMinX,
+            int clearMaxX,
+            IEnumerable<(int x, int y)> points,
+            UExpressionDescriptor descriptor) {
+            var baseCurve = new UCurve(descriptor) { xs = xs.ToList(), ys = ys.ToList() };
+            var newXs = new List<int>(xs.Count);
+            var newYs = new List<int>(ys.Count);
+            int leftIdx = -1;
+            int rightIdx = xs.Count;
+            for (int i = 0; i < xs.Count; i++) {
+                if (clearMinX <= xs[i] && xs[i] <= clearMaxX) {
+                    continue;
+                }
+                if (xs[i] < clearMinX) {
+                    leftIdx = i;
+                } else if (rightIdx == xs.Count) {
+                    rightIdx = i;
+                }
+                newXs.Add(xs[i]);
+                newYs.Add(ys[i]);
+            }
+
+            // A side without points still gets an anchor, so the edited points always
+            // return to the default value there (as UCurve.Set does).
+            var anchors = new List<int>();
+            int leftAnchor = clearMinX - interval;
+            if (leftIdx < 0 || xs[leftIdx] < leftAnchor) {
+                if (leftIdx >= 0 && leftIdx == xs.Count - 1) {
+                    // The curve is at its default value after its last point. Keep it flat.
+                    anchors.Add(xs[leftIdx] + 1);
+                }
+                anchors.Add(leftAnchor);
+            }
+            int rightAnchor = clearMaxX + interval;
+            if (rightIdx == xs.Count || rightAnchor < xs[rightIdx]) {
+                anchors.Add(rightAnchor);
+                if (rightIdx == 0 && xs.Count > 0) {
+                    // The curve is at its default value before its first point. Keep it flat.
+                    anchors.Add(xs[rightIdx] - 1);
+                }
+            }
+
+            foreach (int x in anchors) {
+                InsertSorted(newXs, newYs, x, baseCurve.Sample(x));
+            }
+            foreach (var (x, y) in points) {
+                InsertSorted(newXs, newYs, x, (int)Math.Clamp(y, descriptor.min, descriptor.max));
+            }
+            return (newXs.ToArray(), newYs.ToArray());
+        }
+
+        private static void InsertSorted(List<int> xs, List<int> ys, int x, int y) {
+            int idx = xs.BinarySearch(x);
+            if (idx >= 0) {
+                ys[idx] = y;
+            } else {
+                xs.Insert(~idx, x);
+                ys.Insert(~idx, y);
+            }
+        }
+    }
+
+    public class CurveSelection {
+        public string? Abbr { get; private set; }
+        public (int x, int y) StartPoint { get; set; } = (0, 0);
+        public (int x, int y) EndPoint { get; set; } = (0, 0);
+        private List<int> xs = new List<int>(); // tick from part start
+        private List<int> ys = new List<int>();
+
+        public CurveSelection() { }
+
+        public bool HasValue(string? abbr = null) {
+            return Abbr != null && (abbr == null || Abbr == abbr);
+        }
+
+        public void Clear() {
+            Abbr = null;
+            StartPoint = (0, 0);
+            EndPoint = (0, 0);
+            xs.Clear();
+            ys.Clear();
+        }
+
+        public void Add (string abbr, (int x, int y) startPoint, (int x, int y) endPoint, IEnumerable<int> xs, IEnumerable<int> ys) {
+            Abbr = abbr;
+            StartPoint = startPoint;
+            EndPoint = endPoint;
+            this.xs.AddRange(xs);
+            this.ys.AddRange(ys);
+        }
+
+        public void GetWholeCurveAndSelection(string abbr, UCurve? curve, out List<int> wholeXs, out List<int> wholeYs) {
+            wholeXs = new List<int>();
+            wholeYs = new List<int>();
+            if (curve != null) {
+                wholeXs.AddRange(curve.xs);
+                wholeYs.AddRange(curve.ys);
+            }
+            if (HasValue(abbr)) {
+                bool flag = false;
+                for (int i = 0; i < wholeXs.Count; i++) {
+                    int x = wholeXs[i];
+                    if (StartPoint.x < x) {
+                        wholeXs.Insert(i, StartPoint.x);
+                        wholeYs.Insert(i, StartPoint.y);
+                        flag = true;
+                        break;
+                    }
+                }
+                if (!flag) {
+                    wholeXs.Add(StartPoint.x);
+                    wholeYs.Add(StartPoint.y);
+                }
+
+                if (StartPoint.x != EndPoint.x) {
+                    flag = false;
+                    for (int i = 0; i < wholeXs.Count; i++) {
+                        int x = wholeXs[i];
+                        if (EndPoint.x < x) {
+                            wholeXs.Insert(i, EndPoint.x);
+                            wholeYs.Insert(i, EndPoint.y);
+                            flag = true;
+                            break;
+                        }
+                    }
+                    if (!flag) {
+                        wholeXs.Add(EndPoint.x);
+                        wholeYs.Add(EndPoint.y);
+                    }
+                }
+            }
+        }
+
+        public void GetSelectedRange(string abbr, out List<int> xs, out List<int> ys) {
+            xs = new List<int>();
+            ys = new List<int>();
+            if (!HasValue(abbr)) {
+                return;
+            }
+            xs.Add(StartPoint.x);
+            ys.Add(StartPoint.y);
+            xs.AddRange(this.xs);
+            ys.AddRange(this.ys);
+            xs.Add(EndPoint.x);
+            ys.Add(EndPoint.y);
+        }
+
+        public CurveSelection Clone() {
+            return new CurveSelection() {
+                Abbr = Abbr,
+                StartPoint = StartPoint,
+                EndPoint = EndPoint,
+                xs = new List<int>(xs),
+                ys = new List<int>(ys)
+            };
         }
     }
 }

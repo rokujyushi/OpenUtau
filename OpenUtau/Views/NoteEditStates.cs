@@ -7,9 +7,12 @@ using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using OpenUtau.App.Controls;
 using OpenUtau.App.ViewModels;
+using OpenUtau.Classic;
 using OpenUtau.Core;
+using OpenUtau.Core.Format;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
+using ReactiveUI;
 
 namespace OpenUtau.App.Views {
     class KeyboardPlayState {
@@ -48,6 +51,13 @@ namespace OpenUtau.App.Views {
         public Point startPoint;
         public IValueTip valueTip;
         protected virtual bool ShowValueTip => true;
+        protected virtual string? commandNameKey => null;
+        public bool ctrlShiftHeld = false;
+        public bool altShiftHeld = false;
+        public bool shiftHeld = false;
+        public bool ctrlHeld = false;
+        public bool altHeld = false;
+
         public NoteEditState(Control control, PianoRollViewModel vm, IValueTip valueTip) {
             this.control = control;
             this.vm = vm;
@@ -56,7 +66,7 @@ namespace OpenUtau.App.Views {
         public virtual void Begin(IPointer pointer, Point point) {
             pointer.Capture(control);
             startPoint = point;
-            DocManager.Inst.StartUndoGroup();
+            DocManager.Inst.StartUndoGroup(commandNameKey);
             if (ShowValueTip) {
                 valueTip.ShowValueTip();
             }
@@ -67,9 +77,6 @@ namespace OpenUtau.App.Views {
             if (ShowValueTip) {
                 valueTip.HideValueTip();
             }
-        }
-        public virtual void Update(IPointer pointer, Point point, PointerEventArgs args) {
-            Update(pointer, point);
         }
         public virtual void Update(IPointer pointer, Point point) { }
         public static void Swap<T>(ref T a, ref T b) {
@@ -89,6 +96,7 @@ namespace OpenUtau.App.Views {
         protected override bool ShowValueTip => false;
         private int startTick;
         private int startTone;
+
         public NoteSelectionEditState(
             Control control,
             PianoRollViewModel vm,
@@ -134,15 +142,24 @@ namespace OpenUtau.App.Views {
     }
 
     class NoteMoveEditState : NoteEditState {
-        public readonly UNote note;
+        public UNote note;
         private double xOffset;
+        private bool duplicated = true;
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => commandNameKeyLocal;
+        private string commandNameKeyLocal = "command.note.move";
+
         public NoteMoveEditState(
             Control control,
             PianoRollViewModel vm,
             IValueTip valueTip,
-            UNote note) : base(control, vm, valueTip) {
+            UNote note,
+            bool duplicate = false) : base(control, vm, valueTip) {
             this.note = note;
+            if (duplicate) {
+                this.duplicated = false;
+                commandNameKeyLocal = "command.note.duplicate";
+            }
             var notesVm = vm.NotesViewModel;
             if (!notesVm.Selection.Contains(note)) {
                 notesVm.SelectNote(note);
@@ -168,10 +185,10 @@ namespace OpenUtau.App.Views {
             int deltaTone = notesVm.PointToTone(point) - note.tone;
             int minDeltaTone;
             int maxDeltaTone;
-            var selectedNotes = notesVm.Selection.ToList();
-            if (selectedNotes.Count > 0) {
-                minDeltaTone = -selectedNotes.Select(p => p.tone).Min();
-                maxDeltaTone = ViewConstants.MaxTone - 1 - selectedNotes.Select(p => p.tone).Max();
+            var notes = notesVm.Selection.ToList();
+            if (notes.Count > 0) {
+                minDeltaTone = -notes.Select(p => p.tone).Min();
+                maxDeltaTone = ViewConstants.MaxTone - 1 - notes.Select(p => p.tone).Max();
             } else {
                 minDeltaTone = -note.tone;
                 maxDeltaTone = ViewConstants.MaxTone - 1 - note.tone;
@@ -186,9 +203,9 @@ namespace OpenUtau.App.Views {
             int deltaTick = newPos - note.position;
             int minDeltaTick;
             int maxDeltaTick;
-            if (selectedNotes.Count > 0) {
-                minDeltaTick = -selectedNotes.Select(n => n.position).Min();
-                maxDeltaTick = part.Duration - selectedNotes.Select(n => n.End).Max();
+            if (notes.Count > 0) {
+                minDeltaTick = -notes.Select(n => n.position).Min();
+                maxDeltaTick = part.Duration - notes.Select(n => n.End).Max();
             } else {
                 minDeltaTick = -note.position;
                 maxDeltaTick = part.Duration - note.End;
@@ -198,12 +215,21 @@ namespace OpenUtau.App.Views {
             if (deltaTone == 0 && deltaTick == 0) {
                 return;
             }
-            if (selectedNotes.Count == 0) {
-                DocManager.Inst.ExecuteCmd(new MoveNoteCommand(
-                    part, note, deltaTick, deltaTone));
+
+            if (!duplicated) {
+                notes.Remove(note);
+                note = note.Clone();
+                notes = notes.Select(note => note.Clone()).ToList();
+                notes.Add(note);
+                DocManager.Inst.ExecuteCmd(new AddNoteCommand(part, notes));
+                notesVm.Selection.Select(notes);
+                MessageBus.Current.SendMessage(new NotesSelectionEvent(notesVm.Selection));
+                duplicated = true;
+            }
+            if (notes.Count == 0) {
+                DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, note, deltaTick, deltaTone));
             } else {
-                DocManager.Inst.ExecuteCmd(new MoveNoteCommand(
-                    part, selectedNotes, deltaTick, deltaTone));
+                DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, notes, deltaTick, deltaTone));
             }
         }
     }
@@ -212,6 +238,7 @@ namespace OpenUtau.App.Views {
         private UNote? note;
         private bool playTone;
         private int activeTone;
+        protected override string? commandNameKey => "command.note.add";
 
         public NoteDrawEditState(
             Control control,
@@ -230,6 +257,12 @@ namespace OpenUtau.App.Views {
                 }
                 activeTone = note.tone;
                 PlaybackManager.Inst.PlayTone(MusicMath.ToneToFreq(note.tone));
+            }
+            if (note != null) {
+                var prev = vm.NotesViewModel.Part!.notes.FirstOrDefault(n => n.position < note.position && note.position < n.End);
+                if (prev != null) {
+                    DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(vm.NotesViewModel.Part, prev, note.position - prev.End));
+                }
             }
         }
         public override void Update(IPointer pointer, Point point) {
@@ -289,51 +322,43 @@ namespace OpenUtau.App.Views {
     class NoteResizeEditState : NoteEditState {
         public readonly UNote note;
         public readonly UNote? neighborNote;
-        public readonly bool resizeNeighbor;
+        public readonly int neighborNoteLength;
         public readonly bool fromStart;
+        public bool resizeNeighbor;
+        protected override string? commandNameKey => "command.note.edit";
+
         public NoteResizeEditState(
             Control control,
             PianoRollViewModel vm,
             IValueTip valueTip,
             UNote note,
-            bool resizeNeighbor,
             bool fromStart = false) : base(control, vm, valueTip) {
             this.note = note;
             var notesVm = vm.NotesViewModel;
             if (!notesVm.Selection.Contains(note)) {
                 notesVm.DeselectNotes();
             }
-            if (fromStart) {
-                this.resizeNeighbor = notesVm.Selection.Count == 0
-                                      && resizeNeighbor
-                                      && note.Prev != null
-                                      && note.position == note.Prev.End;
-                neighborNote = note.Prev;
-            } else {
-                this.resizeNeighbor = notesVm.Selection.Count == 0
-                                      && resizeNeighbor
-                                      && note.Next != null
-                                      && note.End == note.Next.position;
-                neighborNote = note.Next;
-            }
+            neighborNote = fromStart ? note.Prev : note.Next;
+            neighborNoteLength = neighborNote?.duration ?? 0;
             this.fromStart = fromStart;
         }
         public override void Update(IPointer pointer, Point point) {
             var project = DocManager.Inst.Project;
             var notesVm = vm.NotesViewModel;
             var part = notesVm.Part;
+            this.resizeNeighbor = altHeld;
             if (part == null) {
                 return;
             }
             int snapUnit = project.resolution * 4 / notesVm.SnapDiv;
             int newTick = notesVm.PointToTick(point);
             if (notesVm.IsSnapOn) {
-                newTick = this.fromStart
+                newTick = fromStart
                     ? (int)Math.Floor((double)newTick / snapUnit) * snapUnit
                     : (int)Math.Floor((double)newTick / snapUnit) * snapUnit + snapUnit;
             }
 
-            int deltaDuration = this.fromStart
+            int deltaDuration = fromStart
                 ? note.position - newTick
                 : newTick - note.End;
             int minNoteTicks = notesVm.IsSnapOn ? snapUnit : 15;
@@ -347,32 +372,56 @@ namespace OpenUtau.App.Views {
                 }
                 deltaDuration = Math.Max(deltaDuration, -maxNegDelta);
             }
+
+            var adjacent = neighborNote != null && ((!fromStart && neighborNote.position == note.End) || (fromStart && neighborNote.End == note.position));
+            if (deltaDuration > 0 && neighborNote != null) {
+                if (!fromStart && neighborNote.position < note.End + deltaDuration) adjacent = true;
+                if (fromStart && note.position - deltaDuration < neighborNote.End) adjacent = true;
+            }
+            var resizeNeighbor = notesVm.Selection.Count <= 1
+                && neighborNote != null
+                && (this.resizeNeighbor || deltaDuration > 0 || neighborNote.duration < neighborNoteLength)
+                && adjacent;
             if (resizeNeighbor && neighborNote != null) {
                 var maxDelta = Math.Max(0, neighborNote.duration - minNoteTicks);
                 deltaDuration = Math.Min(deltaDuration, maxDelta);
+            }
+            // Prevent note from moving past part start (position < 0)
+            if (fromStart) {
+                deltaDuration = Math.Min(deltaDuration, note.position);
             }
             if (deltaDuration == 0) {
                 valueTip.UpdateValueTip(note.duration.ToString());
                 return;
             }
-            if (notesVm.Selection.Count == 0) {
-                if (resizeNeighbor && neighborNote != null) {
-                    if (!fromStart) {
-                        DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, neighborNote, deltaDuration, 0));
-                    }
-                    DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, neighborNote, -deltaDuration));
+            // Resize neighbor note
+            if (resizeNeighbor && neighborNote != null) {
+                int cutDuration = deltaDuration;
+                if (!this.resizeNeighbor && deltaDuration < 0) {
+                    cutDuration = Math.Max(deltaDuration, neighborNote.duration - neighborNoteLength);
                 }
+                if (!fromStart && neighborNote.position != note.End) {
+                    cutDuration = note.End + deltaDuration - neighborNote.position;
+                } else if (fromStart && neighborNote.End != note.position) {
+                    cutDuration = neighborNote.End - (note.position - deltaDuration);
+                }
+                if (!fromStart) {
+                    DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, neighborNote, cutDuration, 0));
+                }
+                DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, neighborNote, -cutDuration));
+            }
+            // Resize current note
+            if (notesVm.Selection.Count <= 1) {
                 if (fromStart) {
                     DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, note, -deltaDuration, 0));
                 }
                 DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, note, deltaDuration));
-                valueTip.UpdateValueTip(note.duration.ToString());
-                return;
+            } else {
+                if (fromStart) {
+                    DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, notesVm.Selection.ToList(), -deltaDuration, 0));
+                }
+                DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, notesVm.Selection.ToList(), deltaDuration));
             }
-            if (fromStart) {
-                DocManager.Inst.ExecuteCmd(new MoveNoteCommand(part, notesVm.Selection.ToList(), -deltaDuration, 0));
-            }
-            DocManager.Inst.ExecuteCmd(new ResizeNoteCommand(part, notesVm.Selection.ToList(), deltaDuration));
             valueTip.UpdateValueTip(note.duration.ToString());
         }
     }
@@ -389,6 +438,8 @@ namespace OpenUtau.App.Views {
         private float oldVibFadeInTicks => oldVibFadeIn * oldVibLengthTicks / 100;
         private float oldVibFadeOutTicks => oldVibFadeOut * oldVibLengthTicks / 100;
         private float vibPeriod => note.vibrato.period;
+        protected override string? commandNameKey => "command.note.split";
+
         public NoteSplitEditState(
             Control control,
             PianoRollViewModel vm,
@@ -422,6 +473,9 @@ namespace OpenUtau.App.Views {
             if (newNote == null) {
                 return;
             }
+            foreach (var exp in note.phonemeExpressions.OrderBy(exp => exp.index)) {
+                DocManager.Inst.ExecuteCmd(new SetNoteExpressionCommand(project, project.tracks[part.trackNo], part, newNote, exp.abbr, new float?[] { exp.value }));
+            }
             DocManager.Inst.ExecuteCmd(new ChangeNoteLyricCommand(part, newNote, NotePresets.Default.SplittedLyric));
         }
 
@@ -445,7 +499,7 @@ namespace OpenUtau.App.Views {
             }
 
             int maxNoteTicks = (notesVm.IsSnapOn && snapUnit > 0)
-                ? (oldDur-1) / snapUnit * snapUnit
+                ? (oldDur - 1) / snapUnit * snapUnit
                 : oldDur - 15;
             int maxDelta = maxNoteTicks - note.duration;
 
@@ -499,6 +553,8 @@ namespace OpenUtau.App.Views {
         public override MouseButton MouseButton => mouseButton;
         private MouseButton mouseButton;
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => "command.note.delete";
+
         public NoteEraseEditState(
             Control control,
             PianoRollViewModel vm,
@@ -546,6 +602,8 @@ namespace OpenUtau.App.Views {
         private float y;
         private int index;
         private PitchPoint pitchPoint;
+        protected override string? commandNameKey => "command.pitch.editpoint";
+
         public PitchPointEditState(
             Control control,
             PianoRollViewModel vm,
@@ -562,7 +620,7 @@ namespace OpenUtau.App.Views {
         public override void Begin(IPointer pointer, Point point) {
             base.Begin(pointer, point);
             if (!onPoint && vm.NotesViewModel.Part != null) {
-                pitchPoint = new PitchPoint(x, y);
+                pitchPoint = new PitchPoint(x, y, NotePresets.Default.DefaultPitchShape);
                 index++;
                 DocManager.Inst.ExecuteCmd(new AddPitchPointCommand(
                     vm.NotesViewModel.Part, note, pitchPoint, index));
@@ -608,9 +666,16 @@ namespace OpenUtau.App.Views {
                 deltaY = -pitchPoint.Y;
             } else if (isFirst && note.pitch.snapFirst) {
                 var snapTo = note.Prev == null ? note : note.Prev.End == note.position ? note.Prev : note;
-                deltaY = (snapTo.tone - note.tone) * 10 - pitchPoint.Y;
+                deltaY = (snapTo.AdjustedTone - note.AdjustedTone) * 10 - pitchPoint.Y;
+            } else if (ctrlHeld) {
+                var snappedSemitone = Math.Round(notesVm.PointToToneDouble(point) - note.AdjustedTone, MidpointRounding.AwayFromZero);
+                deltaY = snappedSemitone * 10 - pitchPoint.Y;
+            } else if (altShiftHeld && note.pitch.data.Count > 2 && !isLast) {
+                deltaY = note.pitch.data[index + 1].Y - pitchPoint.Y;
+            } else if (shiftHeld && note.pitch.data.Count > 2 && !isFirst) {
+                deltaY = note.pitch.data[index - 1].Y - pitchPoint.Y;
             } else {
-                deltaY = (notesVm.PointToToneDouble(point) - note.tone) * 10 - pitchPoint.Y;
+                deltaY = (notesVm.PointToToneDouble(point) - note.AdjustedTone) * 10 - pitchPoint.Y;
             }
             if (deltaX == 0 && deltaY == 0) {
                 return;
@@ -627,21 +692,20 @@ namespace OpenUtau.App.Views {
         private Point lastPoint;
         private UExpressionDescriptor? descriptor;
         private UTrack track;
-
         private double startValue = 0;
         private bool shiftWasHeld = false;
+        protected override string? commandNameKey => "command.exp.edit";
+
         public ExpSetValueState(
             Control control,
             PianoRollViewModel vm,
-            IValueTip valueTip) : base(control, vm, valueTip) {
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip) {
             var notesVm = vm.NotesViewModel;
             var project = notesVm.Project;
             var part = notesVm.Part;
             track = project.tracks[part!.trackNo];
-            if (project == null || part == null ||
-                !track.TryGetExpDescriptor(project, notesVm.PrimaryKey, out descriptor)) {
-                descriptor = null;
-            }
+            this.descriptor = descriptor;
         }
         public override void Begin(IPointer pointer, Point point) {
             base.Begin(pointer, point);
@@ -652,16 +716,14 @@ namespace OpenUtau.App.Views {
         public override void End(IPointer pointer, Point point) {
             base.End(pointer, point);
         }
-        public override void Update(IPointer pointer, Point point, PointerEventArgs args) {
+        public override void Update(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
-            bool shiftHeld = args.KeyModifiers == KeyModifiers.Shift;
-            bool ctrlShiftHeld = args.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
             if (descriptor.type != UExpressionType.Curve) {
-                UpdatePhonemeExp(pointer, point, shiftHeld);
+                UpdatePhonemeExp(pointer, point);
             } else {
-                UpdateCurveExp(pointer, point, ctrlShiftHeld, shiftHeld);
+                UpdateCurveExp(pointer, point);
             }
             bool typeOptions = descriptor.type == UExpressionType.Options;
             double viewMax = descriptor.max + (typeOptions ? 1 : 0);
@@ -672,11 +734,30 @@ namespace OpenUtau.App.Views {
                 displayValue = descriptor.min + (viewMax - descriptor.min) * (1 - point.Y / control.Bounds.Height);
                 displayValue = Math.Max(descriptor.min, Math.Min(descriptor.max, displayValue));
             }
-            string valueTipText;
+            string valueTipText = string.Empty;
             if (typeOptions) {
                 int index = (int)displayValue;
                 if (index >= 0 && index < descriptor.options.Length) {
-                    valueTipText = descriptor.options[index];
+                    var value = string.IsNullOrWhiteSpace(descriptor.options[index]) ? "(Default)" : descriptor.options[index];
+                    if (descriptor.abbr == Ustx.CLR && track.Singer is ClassicSinger singer) {
+                        var subbanks = singer.Subbanks
+                            .Where(bank => bank.Color == descriptor.options[index])
+                            .OrderBy(bank => bank.toneSet.FirstOrDefault());
+                        if (subbanks.Count() > 1) {
+                            var low = string.IsNullOrWhiteSpace(subbanks.First().Prefix) ? subbanks.First().Suffix : subbanks.First().Prefix;
+                            var high = string.IsNullOrWhiteSpace(subbanks.Last().Prefix) ? subbanks.Last().Suffix : subbanks.Last().Prefix;
+                            valueTipText = $"{value}: \"{low}\" - \"{high}\"";
+                        } else if (subbanks.Count() == 1) {
+                            var suffix = string.IsNullOrWhiteSpace(subbanks.First().Prefix) ? subbanks.First().Suffix : subbanks.First().Prefix;
+                            if (string.IsNullOrWhiteSpace(suffix)) {
+                                valueTipText = value;
+                            } else {
+                                valueTipText = $"{value}: \"{suffix}\"";
+                            }
+                        }
+                    } else {
+                        valueTipText = value;
+                    }
                 } else {
                     valueTipText = "Error: out of range";
                 }
@@ -690,7 +771,7 @@ namespace OpenUtau.App.Views {
             lastPoint = point;
             shiftWasHeld = shiftHeld;
         }
-        private void UpdatePhonemeExp(IPointer pointer, Point point, bool shiftHeld) {
+        private void UpdatePhonemeExp(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
@@ -727,7 +808,7 @@ namespace OpenUtau.App.Views {
                 }
             }
         }
-        private void UpdateCurveExp(IPointer pointer, Point point, bool ctrlShiftHeld, bool shiftHeld) {
+        private void UpdateCurveExp(IPointer pointer, Point point) {
             var notesVm = vm.NotesViewModel;
             if (descriptor == null || notesVm.Part == null) {
                 return;
@@ -736,6 +817,9 @@ namespace OpenUtau.App.Views {
             int x = notesVm.PointToTick(point);
             int lastY = (int)Math.Round(descriptor.min + (descriptor.max - descriptor.min) * (1 - lastPoint.Y / control.Bounds.Height));
             int y = (int)Math.Round(descriptor.min + (descriptor.max - descriptor.min) * (1 - point.Y / control.Bounds.Height));
+            if (shiftHeld != shiftWasHeld) {
+                firstPoint = point;
+            }
             if (ctrlShiftHeld) {
                 lastX = notesVm.PointToTick(firstPoint);
                 x = notesVm.PointToTick(lastPoint);
@@ -756,25 +840,28 @@ namespace OpenUtau.App.Views {
         private Point lastPoint;
         private UExpressionDescriptor? descriptor;
         private UTrack track;
-        public override MouseButton MouseButton => MouseButton.Right;
+        public override MouseButton MouseButton => mouseButton;
+        private MouseButton mouseButton;
+        protected override string? commandNameKey => "command.exp.reset";
+
         public ExpResetValueState(
             Control control,
             PianoRollViewModel vm,
-            IValueTip valueTip) : base(control, vm, valueTip) {
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor,
+            MouseButton mouseButton = MouseButton.Right) : base(control, vm, valueTip) {
             var notesVm = vm.NotesViewModel;
             var project = notesVm.Project;
             var part = notesVm.Part;
             track = project.tracks[part!.trackNo];
-            if (project == null || part == null ||
-                !track.TryGetExpDescriptor(project, notesVm.PrimaryKey, out descriptor)) {
-                descriptor = null;
-            }
+            this.descriptor = descriptor;
+            this.mouseButton = mouseButton;
         }
         public override void Begin(IPointer pointer, Point point) {
             base.Begin(pointer, point);
             lastPoint = point;
         }
-        public override void Update(IPointer pointer, Point point, PointerEventArgs args) {
+        public override void Update(IPointer pointer, Point point) {
             if (descriptor == null) {
                 return;
             }
@@ -783,7 +870,7 @@ namespace OpenUtau.App.Views {
             } else {
                 ResetCurveExp(pointer, point);
             }
-            valueTip.UpdateValueTip(descriptor.defaultValue.ToString());
+            valueTip.UpdateValueTip(descriptor.CustomDefaultValue.ToString());
         }
         private void ResetPhonemeExp(IPointer pointer, Point point) {
             var notesVm = vm.NotesViewModel;
@@ -820,8 +907,358 @@ namespace OpenUtau.App.Views {
         }
     }
 
+    class CurveSelectionState : NoteEditState {
+        private int startTick;
+        private int? endTick;
+        private UExpressionDescriptor? descriptor;
+        protected override bool ShowValueTip => false;
+
+        public CurveSelectionState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip) {
+            this.descriptor = descriptor;
+        }
+        public override void Begin(IPointer pointer, Point point) {
+            pointer.Capture(control);
+            startPoint = point;
+            var notesVm = vm.NotesViewModel;
+            int snapUnit = notesVm.Project.resolution * 4 / notesVm.SnapDiv;
+            int tick = notesVm.PointToTick(point);
+            if (Preferences.Default.DefaultSnapCurve) {
+            if (notesVm.IsSnapOn) {
+                tick = (int)Math.Floor((double)tick / snapUnit) * snapUnit;
+            }
+            }
+            startTick = tick;
+        }
+        public override void End(IPointer pointer, Point point) {
+            pointer.Capture(null);
+        }
+        public override void Update(IPointer pointer, Point point) {
+            var notesVm = vm.NotesViewModel;
+            if (descriptor == null || notesVm.Part == null) {
+                return;
+            }
+            int snapUnit = notesVm.Project.resolution * 4 / notesVm.SnapDiv;
+            int tick = notesVm.PointToTick(point);
+            if (notesVm.IsSnapOn) {
+                tick = (int)Math.Floor((double)tick / snapUnit) * snapUnit;
+            }
+            if (endTick == tick) return;
+            endTick = tick;
+            if (startTick == tick) {
+                vm.CurveViewModel.ClearSelect();
+                return;
+            }
+            int minTick = Math.Min(tick, startTick);
+            int maxTick = Math.Max(tick, startTick);
+            var curve = notesVm.Part.curves.FirstOrDefault(c => c.abbr == descriptor.abbr);
+            vm.CurveViewModel.Select(descriptor, minTick, maxTick, curve);
+        }
+    }
+    abstract class CurveTransformState : NoteEditState {
+        protected readonly UExpressionDescriptor descriptor;
+        protected CurveSelection? initialSelection;
+        protected string abbr = string.Empty;
+
+        protected int[] baseXs = Array.Empty<int>();
+        protected int[] baseYs = Array.Empty<int>();
+
+        protected int lastStartTick;
+        protected int lastEndTick;
+
+        protected override bool ShowValueTip => true;
+        protected override string? commandNameKey => "command.exp.edit";
+
+        public CurveTransformState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip) {
+            this.descriptor = descriptor;
+        }
+
+        public override void Begin(IPointer pointer, Point point) {
+            base.Begin(pointer, point);
+
+            abbr = descriptor.abbr;
+
+            if (!vm.CurveViewModel.TryGetSelection(abbr, out var selection)) {
+                initialSelection = null;
+                return;
+            }
+
+            initialSelection = selection;
+
+            var curve = vm.NotesViewModel.Part?.curves.FirstOrDefault(c => c.abbr == abbr);
+            baseXs = curve?.xs.ToArray() ?? Array.Empty<int>();
+            baseYs = curve?.ys.ToArray() ?? Array.Empty<int>();
+
+            lastStartTick = initialSelection.StartPoint.x;
+            lastEndTick = initialSelection.EndPoint.x;
+        }
+
+        public override void Update(IPointer pointer, Point point) {
+            if (!CanEdit(out var project, out var part, out var curve)) {
+                return;
+            }
+
+            var oldXs = curve.xs.ToArray();
+            var oldYs = curve.ys.ToArray();
+            var (newXs, newYs) = BuildEditedCurve(point);
+
+            if (!oldXs.SequenceEqual(newXs) || !oldYs.SequenceEqual(newYs)) {
+                DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(
+                    project,
+                    part,
+                    abbr,
+                    oldXs,
+                    oldYs,
+                    newXs,
+                    newYs));
+
+                // Keep the displayed selection in sync with the edited curve while dragging.
+                vm.CurveViewModel.Select(
+                    descriptor,
+                    lastStartTick,
+                    lastEndTick,
+                    curve);
+            }
+        }
+
+        public override void End(IPointer pointer, Point point) {
+            base.End(pointer, point);
+            initialSelection = null;
+        }
+
+        private bool CanEdit(out UProject project, out UVoicePart part, out UCurve curve) {
+            project = null!;
+            part = null!;
+            curve = null!;
+
+            if (initialSelection == null || !initialSelection.HasValue(abbr)) {
+                return false;
+            }
+
+            var notesVm = vm.NotesViewModel;
+            if (notesVm.Project == null || notesVm.Part == null) {
+                return false;
+            }
+
+            var targetCurve = notesVm.Part.curves.FirstOrDefault(c => c.abbr == abbr);
+            if (targetCurve == null) {
+                return false;
+            }
+
+            project = notesVm.Project;
+            part = notesVm.Part;
+            curve = targetCurve;
+            return true;
+        }
+
+        private (int[] xs, int[] ys) BuildEditedCurve(Point point) {
+            if (initialSelection == null || !initialSelection.HasValue(abbr)) {
+                return (baseXs, baseYs);
+            }
+
+            initialSelection.GetSelectedRange(abbr, out var selectedXs, out var selectedYs);
+
+            var start = initialSelection.StartPoint;
+            var end = initialSelection.EndPoint;
+            int movedStartTick = TransformX(start.x, start.y, point);
+            int movedEndTick = TransformX(end.x, end.y, point);
+
+            int originalMinTick = Math.Min(start.x, end.x);
+            int originalMaxTick = Math.Max(start.x, end.x);
+            int movedMinTick = Math.Min(movedStartTick, movedEndTick);
+            int movedMaxTick = Math.Max(movedStartTick, movedEndTick);
+
+            var points = new List<(int x, int y)>(selectedXs.Count);
+            for (int i = 0; i < selectedXs.Count; i++) {
+                points.Add((
+                    TransformX(selectedXs[i], selectedYs[i], point),
+                    TransformY(selectedXs[i], selectedYs[i], point)));
+            }
+
+            lastStartTick = movedStartTick;
+            lastEndTick = movedEndTick;
+
+            if (movedMaxTick < originalMinTick || originalMaxTick < movedMinTick) {
+                // The selection no longer overlaps its original range: clear the original range and
+                // overwrite the destination separately, leaving the curve in between untouched.
+                var (clearedXs, clearedYs) = UCurve.ReplaceRange(
+                    baseXs, baseYs, originalMinTick, originalMaxTick, Array.Empty<(int x, int y)>(), descriptor);
+                return UCurve.ReplaceRange(
+                    clearedXs, clearedYs, movedMinTick, movedMaxTick, points, descriptor);
+            }
+            // Clear both the original range and the destination range as one range.
+            return UCurve.ReplaceRange(
+                baseXs, baseYs,
+                Math.Min(originalMinTick, movedMinTick), Math.Max(originalMaxTick, movedMaxTick),
+                points, descriptor);
+        }
+
+        protected virtual int TransformX(int x, int y, Point point) {
+            return x;
+        }
+
+        protected virtual int TransformY(int x, int y, Point point) {
+            return y;
+        }
+
+        protected int PointToTick(Point point) {
+            var notesVm = vm.NotesViewModel;
+
+            int tick = notesVm.PointToTick(point);
+            if (notesVm.IsSnapOn) {
+                int snapUnit = notesVm.Project.resolution * 4 / notesVm.SnapDiv;
+                tick = (int)Math.Floor((double)tick / snapUnit) * snapUnit;
+            }
+
+            return tick;
+        }
+
+        protected int PointToCurveValue(Point point) {
+            if (control.Bounds.Height <= 0) {
+                return ClampY(descriptor.CustomDefaultValue);
+            }
+
+            return ClampY(Math.Round(
+                descriptor.min + (descriptor.max - descriptor.min) * (1 - point.Y / control.Bounds.Height)));
+        }
+
+        protected int ClampTick(int tick) {
+            return Math.Max(0, tick);
+        }
+
+        protected int ClampY(double y) {
+            return (int)Math.Round(Math.Clamp(y, descriptor.min, descriptor.max));
+        }
+    }
+
+    class CurveVerticalShiftState : CurveTransformState {
+        public CurveVerticalShiftState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip, descriptor) {
+        }
+
+        protected override int TransformY(int x, int y, Point point) {
+            int deltaY = PointToCurveValue(point) - PointToCurveValue(startPoint);
+            valueTip.UpdateValueTip($"add:{deltaY:0}");
+            return y + deltaY;
+        }
+    }
+
+    class CurveVerticalStretchState : CurveTransformState {
+        private int centerY;
+
+        public CurveVerticalStretchState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip, descriptor) {
+        }
+
+        public override void Begin(IPointer pointer, Point point) {
+            base.Begin(pointer, point);
+            centerY = GetSelectionCenterY();
+        }
+
+        protected override int TransformY(int x, int y, Point point) {
+            if (initialSelection == null || !initialSelection.HasValue(abbr)) {
+                return y;
+            }
+
+            int deltaY = PointToCurveValue(point) - PointToCurveValue(startPoint);
+            double range = descriptor.max - descriptor.min;
+            if (range <= 0) {
+                return y;
+            }
+
+            double scale = 1.0 + deltaY / range;
+            valueTip.UpdateValueTip($"scale:{scale:0.00}");
+
+            double stretchedY = Math.Round(centerY + (y - centerY) * scale);
+
+            return ClampY(stretchedY);
+        }
+
+        private int GetSelectionCenterY() {
+            if (initialSelection == null || !initialSelection.HasValue(abbr)) {
+                return ClampY(descriptor.CustomDefaultValue);
+            }
+
+            initialSelection.GetSelectedRange(abbr, out _, out var ys);
+
+            if (ys.Count == 0) {
+                return ClampY(descriptor.CustomDefaultValue);
+            }
+
+            int minY = ys.Min();
+            int maxY = ys.Max();
+            return (minY + maxY) / 2;
+        }
+    }
+
+    class CurveHorizontalShiftState : CurveTransformState {
+        public CurveHorizontalShiftState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip, descriptor) {
+        }
+
+        protected override int TransformX(int x, int y, Point point) {
+            int deltaTick = PointToTick(point) - PointToTick(startPoint);
+            return ClampTick(x + deltaTick);
+        }
+    }
+
+    class CurveHorizontalStretchState : CurveTransformState {
+        public CurveHorizontalStretchState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UExpressionDescriptor descriptor) : base(control, vm, valueTip, descriptor) {
+        }
+
+        protected override int TransformX(int x, int y, Point point) {
+            if (initialSelection == null || !initialSelection.HasValue(abbr)) {
+                return x;
+            }
+
+            int deltaTick = PointToTick(point) - PointToTick(startPoint);
+
+            int startTick = initialSelection.StartPoint.x;
+            int endTick = initialSelection.EndPoint.x;
+
+            int minTick = Math.Min(startTick, endTick);
+            int maxTick = Math.Max(startTick, endTick);
+
+            int width = maxTick - minTick;
+            if (width <= 0) {
+                return x;
+            }
+
+            double centerTick = (minTick + maxTick) / 2.0;
+
+            double scale = 1.0 + (double)deltaTick / width;
+            scale = Math.Max(0.01, scale);
+
+            int stretchedX = (int)Math.Round(centerTick + (x - centerTick) * scale);
+
+            return ClampTick(stretchedX);
+        }
+    }
+
     class VibratoChangeStartState : NoteEditState {
         public readonly UNote note;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangeStartState(
             Control control,
             PianoRollViewModel vm,
@@ -842,6 +1279,8 @@ namespace OpenUtau.App.Views {
 
     class VibratoChangeInState : NoteEditState {
         public readonly UNote note;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangeInState(
             Control control,
             PianoRollViewModel vm,
@@ -867,6 +1306,8 @@ namespace OpenUtau.App.Views {
 
     class VibratoChangeOutState : NoteEditState {
         public readonly UNote note;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangeOutState(
             Control control,
             PianoRollViewModel vm,
@@ -891,6 +1332,8 @@ namespace OpenUtau.App.Views {
 
     class VibratoChangeDepthState : NoteEditState {
         public readonly UNote note;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangeDepthState(
             Control control,
             PianoRollViewModel vm,
@@ -911,6 +1354,8 @@ namespace OpenUtau.App.Views {
 
     class VibratoChangePeriodState : NoteEditState {
         public readonly UNote note;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangePeriodState(
             Control control,
             PianoRollViewModel vm,
@@ -941,6 +1386,8 @@ namespace OpenUtau.App.Views {
         public readonly UNote note;
         public readonly Point hitPoint;
         public readonly float initialShift;
+        protected override string? commandNameKey => "command.vibrato.edit";
+
         public VibratoChangeShiftState(
             Control control,
             PianoRollViewModel vm,
@@ -971,6 +1418,8 @@ namespace OpenUtau.App.Views {
         public readonly UPhoneme phoneme;
         public readonly int index;
         public int startOffset;
+        protected override string? commandNameKey => "command.phoneme.edit";
+
         public PhonemeMoveState(
             Control control,
             PianoRollViewModel vm,
@@ -1005,6 +1454,8 @@ namespace OpenUtau.App.Views {
         public readonly UNote leadingNote;
         public readonly UPhoneme phoneme;
         public readonly int index;
+        protected override string? commandNameKey => "command.phoneme.edit";
+
         public PhonemeChangePreutterState(
             Control control,
             PianoRollViewModel vm,
@@ -1021,12 +1472,69 @@ namespace OpenUtau.App.Views {
             var project = notesVm.Project;
             double preutter = project.timeAxis.MsBetweenTickPos(notesVm.PointToTick(point), phoneme.position);
             double preutterDelta = preutter - phoneme.autoPreutter;
-            preutterDelta = Math.Max(-phoneme.oto?.Preutter ?? 0, preutterDelta);
             if (notesVm.Part == null) {
                 return;
             }
-            DocManager.Inst.ExecuteCmd(new PhonemePreutterCommand(notesVm.Part, leadingNote, index, (float)preutterDelta));
-            valueTip.UpdateValueTip($"{phoneme.preutter:0.0}ms ({preutterDelta:+0.0;-0.0;0}ms)");
+            DocManager.Inst.ExecuteCmd(new PhonemePreutterCommand(notesVm.Part, leadingNote, index, phoneme, (float)preutterDelta));
+            valueTip.UpdateValueTip($"{ThemeManager.GetString("pianoroll.tooltip.preutter")}: {phoneme.preutter:0.0}ms ({phoneme.preutterDelta ?? 0:+0.0;-0.0;0}ms)");
+        }
+    }
+
+    class PhonemeChangeAttackTimeState : NoteEditState {
+        public readonly UNote leadingNote;
+        public readonly UPhoneme phoneme;
+        public readonly int index;
+        public PhonemeChangeAttackTimeState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UNote leadingNote,
+            UPhoneme phoneme,
+            int index) : base(control, vm, valueTip) {
+            this.leadingNote = leadingNote;
+            this.phoneme = phoneme;
+            this.index = index;
+        }
+        public override void Update(IPointer pointer, Point point) {
+            var notesVm = vm.NotesViewModel;
+            var project = notesVm.Project;
+            int partPos = notesVm.Part?.position ?? 0;
+            double p1x = phoneme.PositionMs + Math.Max(-phoneme.preutter + 5, -phoneme.preutter + phoneme.GetFadeIn());
+            double attackTimeDelta = project.timeAxis.TickPosToMsPos(notesVm.PointToTick(point) + partPos) - p1x;
+            if (notesVm.Part == null) {
+                return;
+            }
+            DocManager.Inst.ExecuteCmd(new PhonemeAttackTimeCommand(notesVm.Part, leadingNote, index, phoneme, (float)attackTimeDelta));
+            valueTip.UpdateValueTip($"{ThemeManager.GetString("pianoroll.tooltip.attack")}: {phoneme.attackTimeDelta ?? 0:+0.0;-0.0;0}ms");
+        }
+    }
+
+    class PhonemeChangeReleaseTimeState : NoteEditState {
+        public readonly UNote leadingNote;
+        public readonly UPhoneme phoneme;
+        public readonly int index;
+        public PhonemeChangeReleaseTimeState(
+            Control control,
+            PianoRollViewModel vm,
+            IValueTip valueTip,
+            UNote leadingNote,
+            UPhoneme phoneme,
+            int index) : base(control, vm, valueTip) {
+            this.leadingNote = leadingNote;
+            this.phoneme = phoneme;
+            this.index = index;
+        }
+        public override void Update(IPointer pointer, Point point) {
+            var notesVm = vm.NotesViewModel;
+            var project = notesVm.Project;
+            int partPos = notesVm.Part?.position ?? 0;
+            double p3x = phoneme.PositionMs + Math.Max(phoneme.envelope.data[2].X, phoneme.envelope.data[4].X - phoneme.GetFadeOut());
+            double releaseTimeDelta = p3x - project.timeAxis.TickPosToMsPos(notesVm.PointToTick(point) + partPos);
+            if (notesVm.Part == null) {
+                return;
+            }
+            DocManager.Inst.ExecuteCmd(new PhonemeReleaseTimeCommand(notesVm.Part, leadingNote, index, phoneme, (float)releaseTimeDelta));
+            valueTip.UpdateValueTip($"{ThemeManager.GetString("pianoroll.tooltip.release")}: {phoneme.releaseTimeDelta ?? 0:+0.0;-0.0;0}ms");
         }
     }
 
@@ -1034,6 +1542,8 @@ namespace OpenUtau.App.Views {
         public readonly UNote leadingNote;
         public readonly UPhoneme phoneme;
         public readonly int index;
+        protected override string? commandNameKey => "command.phoneme.edit";
+
         public PhonemeChangeOverlapState(
             Control control,
             PianoRollViewModel vm,
@@ -1049,19 +1559,21 @@ namespace OpenUtau.App.Views {
             var notesVm = vm.NotesViewModel;
             var project = notesVm.Project;
             int partPos = notesVm.Part?.position ?? 0;
-            double overlap = project.timeAxis.TickPosToMsPos(notesVm.PointToTick(point) + partPos) - (phoneme.PositionMs - phoneme.preutter);
-            double overlapDelta = overlap - phoneme.autoOverlap;
+            double overlap = - phoneme.preutter + phoneme.autoOverlap;
+            double overlapDelta = project.timeAxis.TickPosToMsPos(notesVm.PointToTick(point) - phoneme.position) - overlap;
             if (notesVm.Part == null) {
                 return;
             }
-            DocManager.Inst.ExecuteCmd(new PhonemeOverlapCommand(notesVm.Part, leadingNote, index, (float)overlapDelta));
-            valueTip.UpdateValueTip($"{phoneme.overlap:0.0}ms ({overlapDelta:+0.0;-0.0;0}ms)");
+            DocManager.Inst.ExecuteCmd(new PhonemeOverlapCommand(notesVm.Part, leadingNote, index, phoneme, (float)overlapDelta));
+            valueTip.UpdateValueTip($"{ThemeManager.GetString("pianoroll.tooltip.overlap")}: {phoneme.overlap:0.0}ms ({phoneme.overlapDelta ?? 0:+0.0;-0.0;0}ms)");
         }
     }
 
     class PhonemeResetState : NoteEditState {
         public override MouseButton MouseButton => MouseButton.Right;
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => "command.phoneme.reset";
+
         public PhonemeResetState(
             Control control,
             PianoRollViewModel vm,
@@ -1077,9 +1589,20 @@ namespace OpenUtau.App.Views {
                 if (hitInfo.hitPosition) {
                     DocManager.Inst.ExecuteCmd(new PhonemeOffsetCommand(notesVm.Part, leadingNote, index, 0));
                 } else if (hitInfo.hitPreutter) {
-                    DocManager.Inst.ExecuteCmd(new PhonemePreutterCommand(notesVm.Part, leadingNote, index, 0));
+                    DocManager.Inst.ExecuteCmd(new PhonemePreutterCommand(notesVm.Part, leadingNote, index, phoneme, 0));
                 } else if (hitInfo.hitOverlap) {
-                    DocManager.Inst.ExecuteCmd(new PhonemeOverlapCommand(notesVm.Part, leadingNote, index, 0));
+                    if (phoneme.Next == null) {
+                        return;
+                    }
+                    phoneme = phoneme.Next;
+                    parent = phoneme.Parent;
+                    leadingNote = parent.Extends ?? parent;
+                    index = phoneme.index;
+                    DocManager.Inst.ExecuteCmd(new PhonemeOverlapCommand(notesVm.Part, leadingNote, index, phoneme, 0));
+                } else if (hitInfo.hitAttackTime) {
+                    DocManager.Inst.ExecuteCmd(new PhonemeAttackTimeCommand(notesVm.Part, leadingNote, index, phoneme, 0));
+                } else if (hitInfo.hitReleaseTime) {
+                    DocManager.Inst.ExecuteCmd(new PhonemeReleaseTimeCommand(notesVm.Part, leadingNote, index, phoneme, 0));
                 }
                 return;
             }
@@ -1099,12 +1622,18 @@ namespace OpenUtau.App.Views {
 
     class DrawPitchState : NoteEditState {
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => "command.pitch.draw";
+        private readonly bool overwrite;
         double? lastPitch;
         Point lastPoint;
+
         public DrawPitchState(
             Control control,
             PianoRollViewModel vm,
-            IValueTip valueTip) : base(control, vm, valueTip) { }
+            IValueTip valueTip,
+            bool overwrite = false) : base(control, vm, valueTip) {
+            this.overwrite = overwrite;
+        }
         public override void Begin(IPointer pointer, Point point) {
             base.Begin(pointer, point);
             lastPoint = point;
@@ -1114,7 +1643,9 @@ namespace OpenUtau.App.Views {
             var samplePoint = vm.NotesViewModel.TickToneToPoint(
                 (int)Math.Round(tick / 5.0) * 5,
                 vm.NotesViewModel.PointToToneDouble(point));
-            double? pitch = vm.NotesViewModel.HitTest.SamplePitch(samplePoint);
+            double? pitch = overwrite
+                ? vm.NotesViewModel.HitTest.SampleOverwritePitch(samplePoint)
+                : vm.NotesViewModel.HitTest.SamplePitch(samplePoint);
             if (pitch == null || vm.NotesViewModel.Part == null) {
                 return;
             }
@@ -1132,100 +1663,445 @@ namespace OpenUtau.App.Views {
         }
     }
 
-    class DrawLinePitchState : NoteEditState {
-        protected override bool ShowValueTip => false;
-        double? firstPitch;
-        Point firstPoint;
-        double? lastPitch;
-        Point lastPoint;
-        public DrawLinePitchState(
-            Control control, 
-            PianoRollViewModel vm, 
-            IValueTip valueTip) : base(control, vm, valueTip) { }
-        public override void Begin(IPointer pointer, Point point) {
-            base.Begin(pointer, point);
-            int tick = vm.NotesViewModel.PointToTick(point);
-            var samplePoint = vm.NotesViewModel.TickToneToPoint(
-                (int)Math.Round(tick / 5.0) * 5,
-                vm.NotesViewModel.PointToToneDouble(point));
-            firstPitch = vm.NotesViewModel.HitTest.SamplePitch(samplePoint);
-            firstPoint = point;
-            lastPoint = point;
-        }
-        public override void Update(IPointer pointer, Point point) {
-            int tick = vm.NotesViewModel.PointToTick(point);
-            var samplePoint = vm.NotesViewModel.TickToneToPoint(
-                (int)Math.Round(tick / 5.0) * 5,
-                vm.NotesViewModel.PointToToneDouble(point));
-            double? pitch = vm.NotesViewModel.HitTest.SamplePitch(samplePoint);
-            if (pitch == null || vm.NotesViewModel.Part == null) {
-                return;
-            }
-            double tone = vm.NotesViewModel.PointToToneDouble(point);
-            DocManager.Inst.ExecuteCmd(new SetCurveCommand(
-                vm.NotesViewModel.Project,
-                vm.NotesViewModel.Part,
-                Core.Format.Ustx.PITD,
-                vm.NotesViewModel.PointToTick(lastPitch == null ? point : lastPoint),
-                (int)Math.Round(tone * 100 - (lastPitch ?? pitch.Value)),
-                vm.NotesViewModel.PointToTick(firstPoint),
-                (int)Math.Round(tone * 100 - (firstPitch == null ? pitch.Value : firstPitch.Value))
-                ));
-            lastPitch = pitch;
-            lastPoint = point;
-        }
-    }
+    class PitchCurveState : NoteEditState {
+        protected override bool ShowValueTip => true;
+        protected override string? commandNameKey => "command.pitch.draw";
+        protected const int step = 5;
+        public enum CurveMode { Line, Sine, SCurve }
 
-    class OverwritePitchState : NoteEditState {
-        protected override bool ShowValueTip => false;
-        double? lastPitch;
-        Point lastPoint;
-        public OverwritePitchState(
+        enum Phase { Drawing, Adjusting }
+
+        private readonly CurveMode mode;
+        private readonly bool overwrite;
+        private readonly Polyline previewLine;
+
+        private Phase phase = Phase.Drawing;
+        private bool curveApplied = false;
+        private Point firstPoint;
+        private Point endPoint;
+        private Point prevPoint;
+
+        // Curve parameters
+        private double spacingTicks;
+        private double amplitudeCents;
+        private double scurveStrength;
+
+        public CurveMode Mode => mode;
+        public bool IsInAdjustingPhase => phase == Phase.Adjusting;
+
+        public PitchCurveState(
             Control control,
             PianoRollViewModel vm,
-            IValueTip valueTip) : base(control, vm, valueTip) { }
-        public override void Begin(IPointer pointer, Point point) {
-            base.Begin(pointer, point);
-            lastPoint = point;
+            IValueTip valueTip,
+            Polyline previewLine,
+            CurveMode mode,
+            bool overwrite) : base(control, vm, valueTip) {
+            this.mode = mode;
+            this.overwrite = overwrite;
+            this.previewLine = previewLine;
         }
+
+        public override void Begin(IPointer pointer, Point point) {
+            pointer.Capture(control);
+            firstPoint = point;
+            endPoint = point;
+            prevPoint = point;
+            phase = Phase.Drawing;
+            InitDefaultParams();
+            DocManager.Inst.StartUndoGroup(commandNameKey);
+            valueTip.ShowValueTip();
+            ShowPreview();
+        }
+
         public override void Update(IPointer pointer, Point point) {
-            int tick = vm.NotesViewModel.PointToTick(point);
-            var samplePoint = vm.NotesViewModel.TickToneToPoint(
-                (int)Math.Round(tick / 5.0) * 5,
-                vm.NotesViewModel.PointToToneDouble(point));
-            double? pitch = vm.NotesViewModel.HitTest.SampleOverwritePitch(samplePoint);
-            if (pitch == null || vm.NotesViewModel.Part == null) {
+            var notesVm = vm.NotesViewModel;
+            if (notesVm.Part == null) {
+                prevPoint = point;
                 return;
             }
-            double tone = vm.NotesViewModel.PointToToneDouble(point);
-            DocManager.Inst.ExecuteCmd(new SetCurveCommand(
-                vm.NotesViewModel.Project,
-                vm.NotesViewModel.Part,
-                Core.Format.Ustx.PITD,
-                vm.NotesViewModel.PointToTick(point),
-                (int)Math.Round(tone * 100 - pitch.Value),
-                vm.NotesViewModel.PointToTick(lastPitch == null ? point : lastPoint),
-                (int)Math.Round(tone * 100 - (lastPitch ?? pitch.Value))));
-            lastPitch = pitch;
-            lastPoint = point;
+
+            if (phase == Phase.Drawing) {
+                UpdateDrawingParams(point);
+                if (mode == CurveMode.Line) {
+                    endPoint = point;
+                }
+                UpdatePreview(firstPoint, point);
+            } else { // Phase.Adjusting
+                UpdateAdjustingParams(point);
+                UpdatePreview(firstPoint, endPoint);
+            }
+            prevPoint = point;
+        }
+
+        public override void End(IPointer pointer, Point point) {
+            if (!curveApplied) {
+                if (IsSignificantDrag(firstPoint, endPoint)) {
+                    ApplyCurve();
+                }
+                curveApplied = true;
+            }
+            HidePreview();
+            pointer.Capture(null);
+            DocManager.Inst.EndUndoGroup();
+            valueTip.HideValueTip();
+        }
+
+        /// <summary>
+        /// Called by PianoRoll on first mouse-up for S-curve/Sine to enter adjusting phase.
+        /// Returns false if the drag was not significant (click without drag), signaling cancellation.
+        /// </summary>
+        public bool TransitionToAdjusting(Point point) {
+            if (!IsSignificantDrag(firstPoint, point)) {
+                // Click without drag — cancel the edit
+                Cancel(null);
+                return false;
+            }
+            endPoint = point;
+            phase = Phase.Adjusting;
+            UpdatePreview(firstPoint, endPoint);
+            return true;
+        }
+
+        private bool IsSignificantDrag(Point a, Point b) {
+            double dx = a.X - b.X;
+            double dy = a.Y - b.Y;
+            return dx * dx + dy * dy > 25; // minimum 5px drag
+        }
+
+        /// <summary>Called by PianoRoll to apply the curve edit.</summary>
+        public void Apply() {
+            ApplyCurve();
+            curveApplied = true;
+        }
+
+        /// <summary>Called by PianoRoll to hide the preview after finalization.</summary>
+        public void HidePreview() {
+            previewLine.IsVisible = false;
+            previewLine.Points.Clear();
+        }
+
+        /// <summary>Called by PianoRoll to cancel the edit (e.g. right-click during adjusting).</summary>
+        public void Cancel(IPointer? pointer) {
+            HidePreview();
+            pointer?.Capture(null);
+            DocManager.Inst.EndUndoGroup();
+            valueTip.HideValueTip();
+        }
+
+        private void ShowPreview() {
+            previewLine.IsVisible = true;
+        }
+
+        private void InitDefaultParams() {
+            spacingTicks = 120;
+            amplitudeCents = 100; // 1 tone
+            scurveStrength = 2.0;
+        }
+
+        private void UpdateDrawingParams(Point point) {
+            var notesVm = vm.NotesViewModel;
+            switch (mode) {
+                case CurveMode.Sine:
+                    valueTip.UpdateValueTip($"\u03BB:{spacingTicks:0} ticks, amp:{amplitudeCents / 100:0.00}tone");
+                    break;
+                case CurveMode.SCurve:
+                    valueTip.UpdateValueTip($"S:{scurveStrength:0.00}");
+                    break;
+                case CurveMode.Line:
+                default:
+                    valueTip.UpdateValueTip("line");
+                    break;
+            }
+        }
+
+        private void UpdateAdjustingParams(Point point) {
+            var notesVm = vm.NotesViewModel;
+            double dx = point.X - prevPoint.X;
+            double dy = point.Y - prevPoint.Y;
+            switch (mode) {
+                case CurveMode.Sine: {
+                        int startTick = notesVm.PointToTick(firstPoint);
+                        int endTick = notesVm.PointToTick(endPoint);
+                        if (startTick > endTick) (startTick, endTick) = (endTick, startTick);
+                        int maxSpacing = Math.Max(step, endTick - startTick);
+                        // Horizontal: adjust wavelength, Vertical: adjust amplitude
+                        spacingTicks = Math.Clamp(spacingTicks + dx, step, maxSpacing);
+                        amplitudeCents = Math.Clamp(amplitudeCents - dy * 2, 0, 1200);
+                        valueTip.UpdateValueTip($"\u03BB:{spacingTicks:0} ticks, amp:{amplitudeCents / 100:0.00}tone");
+                        break;
+                    }
+                case CurveMode.SCurve: {
+                        // Both directions adjust S-curve strength
+                        scurveStrength = Math.Clamp(scurveStrength - dy * 0.05, 1.0, 8.0);
+                        valueTip.UpdateValueTip($"S:{scurveStrength:0.00}");
+                        break;
+                    }
+            }
+        }
+
+        private void UpdatePreview(Point start, Point end) {
+            var notesVm = vm.NotesViewModel;
+            if (notesVm.Part == null) return;
+
+            var pts = new Points();
+            foreach (var (tick, tone) in ComputeSamples(start, end, 1)) {
+                pts.Add(notesVm.TickToneToPoint(tick, tone - 0.5));
+            }
+            previewLine.Points = pts;
+        }
+
+        private void ApplyCurve() {
+            var notesVm = vm.NotesViewModel;
+            if (notesVm.Part == null) return;
+
+            int startTick = notesVm.PointToTick(firstPoint);
+            int endTick = notesVm.PointToTick(endPoint);
+
+            if (startTick == endTick) {
+                ApplySinglePoint(notesVm, endPoint, endPoint);
+                return;
+            }
+            if (startTick > endTick) {
+                (startTick, endTick) = (endTick, startTick);
+                (firstPoint, endPoint) = (endPoint, firstPoint);
+            }
+            if (mode == CurveMode.Sine) {
+                spacingTicks = Math.Min(Math.Max(step, spacingTicks), Math.Max(step, endTick - startTick));
+            }
+
+            var curveSamples = new List<(int x, int y)>();
+            foreach (var (tick, tone) in ComputeSamples(firstPoint, endPoint, step)) {
+                var sp = notesVm.TickToneToPoint(tick, tone);
+                double? basePitch = overwrite
+                    ? notesVm.HitTest.SampleOverwritePitch(sp)
+                    : notesVm.HitTest.SamplePitch(sp);
+                if (basePitch == null) continue;
+                curveSamples.Add((tick, (int)Math.Round(tone * 100 - basePitch.Value)));
+            }
+            if (curveSamples.Count == 0) return;
+
+            // Compute boundary anchor points to avoid interpolation from far-away points
+            var (startAnchor, endAnchor) = ComputeBoundaryAnchors(notesVm, startTick, endTick, curveSamples);
+
+            var part = notesVm.Part!;
+            var project = notesVm.Project;
+            if (overwrite) {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == Core.Format.Ustx.PITD);
+                var oldXs = curve != null ? curve.xs.ToArray() : Array.Empty<int>();
+                var oldYs = curve != null ? curve.ys.ToArray() : Array.Empty<int>();
+                var newXs = new List<int>();
+                var newYs = new List<int>();
+                for (int i = 0; i < oldXs.Length; i++) {
+                    if (oldXs[i] < startTick) { newXs.Add(oldXs[i]); newYs.Add(oldYs[i]); }
+                }
+                // Insert start boundary anchor if there's a gap
+                if (startAnchor.HasValue) {
+                    var (ax, ay) = startAnchor.Value;
+                    if (newXs.Count == 0 || newXs[newXs.Count - 1] < ax) {
+                        newXs.Add(ax); newYs.Add(ay);
+                    }
+                }
+                foreach (var (x, y) in curveSamples) { newXs.Add(x); newYs.Add(y); }
+                // Insert end boundary anchor if there's a gap
+                if (endAnchor.HasValue) {
+                    var (ax, ay) = endAnchor.Value;
+                    newXs.Add(ax); newYs.Add(ay);
+                }
+                for (int i = 0; i < oldXs.Length; i++) {
+                    if (oldXs[i] > endTick) { newXs.Add(oldXs[i]); newYs.Add(oldYs[i]); }
+                }
+                DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(project, part, Core.Format.Ustx.PITD, oldXs, oldYs, newXs.ToArray(), newYs.ToArray()));
+            } else {
+                // Insert start boundary anchor if there's a gap
+                if (startAnchor.HasValue) {
+                    var (ax, ay) = startAnchor.Value;
+                    DocManager.Inst.ExecuteCmd(new SetCurveCommand(project, part, Core.Format.Ustx.PITD, ax, ay, ax, ay));
+                }
+                foreach (var (x, y) in curveSamples)
+                    DocManager.Inst.ExecuteCmd(new SetCurveCommand(project, part, Core.Format.Ustx.PITD, x, y, x, y));
+                // Insert end boundary anchor if there's a gap
+                if (endAnchor.HasValue) {
+                    var (ax, ay) = endAnchor.Value;
+                    DocManager.Inst.ExecuteCmd(new SetCurveCommand(project, part, Core.Format.Ustx.PITD, ax, ay, ax, ay));
+                }
+            }
+        }
+
+        /// <summary>
+        /// Computes anchor points at the curve boundaries to prevent interpolation
+        /// from far-away existing points. Returns (tick, deviation) or null if no anchor needed.
+        /// </summary>
+        private ((int x, int y)? startAnchor, (int x, int y)? endAnchor) ComputeBoundaryAnchors(
+                NotesViewModel notesVm, int startTick, int endTick, List<(int x, int y)> samples) {
+            var curve = notesVm.Part?.curves.FirstOrDefault(c => c.abbr == Core.Format.Ustx.PITD);
+            int[] oldXs = curve != null ? curve.xs.ToArray() : Array.Empty<int>();
+            int[] oldYs = curve != null ? curve.ys.ToArray() : Array.Empty<int>();
+
+            (int x, int y)? startAnchor = null;
+            (int x, int y)? endAnchor = null;
+
+            int firstSampleTick = samples[0].x;
+            int lastSampleTick = samples[samples.Count - 1].x;
+
+            // Find nearest existing point before the curve start
+            int nearestBeforeStart = -1;
+            for (int i = 0; i < oldXs.Length; i++) {
+                if (oldXs[i] < firstSampleTick) nearestBeforeStart = i;
+                else break;
+            }
+
+            // Find nearest existing point after the curve end
+            int nearestAfterEnd = -1;
+            for (int i = oldXs.Length - 1; i >= 0; i--) {
+                if (oldXs[i] > lastSampleTick) nearestAfterEnd = i;
+                else break;
+            }
+
+            // Compute anchor at start boundary: one step before first sample
+            int anchorStartTick = firstSampleTick - step;
+            if (nearestBeforeStart >= 0) {
+                // There's an existing point before - use its value at the anchor position
+                if (oldXs[nearestBeforeStart] <= anchorStartTick) {
+                    // Existing point is at or before anchor - use its deviation value
+                    startAnchor = (anchorStartTick, oldYs[nearestBeforeStart]);
+                }
+                // If existing point is between anchor and first sample, no anchor needed
+                // (the existing point will serve as the bridge)
+            } else {
+                // No existing point before - anchor at zero deviation
+                startAnchor = (anchorStartTick, 0);
+            }
+
+            // Compute anchor at end boundary: one step after last sample
+            int anchorEndTick = lastSampleTick + step;
+            if (nearestAfterEnd >= 0) {
+                // There's an existing point after - use its value at the anchor position
+                if (oldXs[nearestAfterEnd] >= anchorEndTick) {
+                    // Existing point is at or after anchor - use its deviation value
+                    endAnchor = (anchorEndTick, oldYs[nearestAfterEnd]);
+                }
+                // If existing point is between last sample and anchor, no anchor needed
+            } else {
+                // No existing point after - anchor at zero deviation
+                endAnchor = (anchorEndTick, 0);
+            }
+
+            return (startAnchor, endAnchor);
+        }
+
+        private void ApplySinglePoint(NotesViewModel notesVm, Point point, Point lastPoint) {
+            var part = notesVm.Part;
+            if (part == null) return;
+            int tick = notesVm.PointToTick(point);
+            var sp = notesVm.TickToneToPoint((int)Math.Round(tick / (double)step) * step, notesVm.PointToToneDouble(point));
+            double? pitch = overwrite
+                ? notesVm.HitTest.SampleOverwritePitch(sp)
+                : notesVm.HitTest.SamplePitch(sp);
+            if (pitch == null) return;
+            double tone = notesVm.PointToToneDouble(point);
+            int y = (int)Math.Round(tone * 100 - pitch.Value);
+            if (overwrite) {
+                var curve = part.curves.FirstOrDefault(c => c.abbr == Core.Format.Ustx.PITD);
+                var oldXs = curve != null ? curve.xs.ToArray() : Array.Empty<int>();
+                var oldYs = curve != null ? curve.ys.ToArray() : Array.Empty<int>();
+                var newXs = new List<int>();
+                var newYs = new List<int>();
+                for (int i = 0; i < oldXs.Length; i++) {
+                    if (oldXs[i] != tick) { newXs.Add(oldXs[i]); newYs.Add(oldYs[i]); }
+                }
+                newXs.Add(tick);
+                newYs.Add(y);
+                DocManager.Inst.ExecuteCmd(new MergedSetCurveCommand(
+                    notesVm.Project, part, Core.Format.Ustx.PITD,
+                    oldXs, oldYs, newXs.ToArray(), newYs.ToArray()));
+            } else {
+                DocManager.Inst.ExecuteCmd(new SetCurveCommand(
+                    notesVm.Project, part, Core.Format.Ustx.PITD,
+                    notesVm.PointToTick(point), y,
+                    notesVm.PointToTick(lastPoint), y));
+            }
+        }
+
+        /// <summary>
+        /// Computes samples along the curve from start to end point, snapping to step boundaries.
+        /// Returns (tick, tone) pairs. Handles tick swapping internally.
+        /// </summary>
+        private IEnumerable<(int tick, double tone)> ComputeSamples(Point start, Point end, int sampleStep) {
+            var notesVm = vm.NotesViewModel;
+            int startTick = notesVm.PointToTick(start);
+            int endTick = notesVm.PointToTick(end);
+            double startTone = notesVm.PointToToneDouble(start);
+            double endTone = notesVm.PointToToneDouble(end);
+
+            if (startTick == endTick) {
+                yield return (startTick, notesVm.PointToToneDouble(end));
+                yield break;
+            }
+            if (startTick > endTick) {
+                (startTick, endTick) = (endTick, startTick);
+                (startTone, endTone) = (endTone, startTone);
+            }
+
+            int firstSample = (int)Math.Round(startTick / (double)step) * step;
+            int lastSample = (int)Math.Round(endTick / (double)step) * step;
+            if (firstSample < startTick) firstSample += step;
+            if (lastSample > endTick) lastSample -= step;
+
+            double total = endTick - startTick;
+            int effectiveSpacing = mode == CurveMode.Sine
+                ? Math.Min(Math.Max(step, (int)spacingTicks), Math.Max(step, (int)total))
+                : 0;
+
+            for (int x = firstSample; x <= lastSample; x += sampleStep) {
+                double t = (x - startTick) / total;
+                double tone = ComputeTone(startTone, endTone, t, x, (int)total, startTick, effectiveSpacing);
+                yield return (x, tone);
+            }
+        }
+
+        private double ComputeTone(double startTone, double endTone, double t, int tick, int totalTicks, int sineStartTick = 0, int? spacingOverride = null) {
+            switch (mode) {
+                case CurveMode.Sine:
+                    double center = startTone + (endTone - startTone) * t;
+                    double sp = spacingOverride ?? spacingTicks;
+                    double fadeTicks = Math.Max(step, Math.Min(totalTicks * 0.1, sp));
+                    double fadeIn = Math.Clamp((tick - sineStartTick) / fadeTicks, 0, 1);
+                    double fadeOut = Math.Clamp((sineStartTick + totalTicks - tick) / fadeTicks, 0, 1);
+                    double envelope = Math.Min(fadeIn, fadeOut);
+                    double phase = 2 * Math.PI * (tick - sineStartTick) / sp;
+                    return center + Math.Sin(phase) * amplitudeCents / 100.0 * envelope;
+                case CurveMode.SCurve:
+                    double a = Math.Pow(t, scurveStrength);
+                    double b = Math.Pow(1 - t, scurveStrength);
+                    return startTone + (endTone - startTone) * (a / (a + b));
+                default:
+                    return startTone + (endTone - startTone) * t;
+            }
         }
     }
-
     class SmoothenPitchState : NoteEditState {
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => "command.pitch.edit";
+        private readonly bool overwrite;
         int brushRadius = 10;
         int kernelRadius = 3;
         double kernelWeight = 1.0 / (2 * 3 + 1);
+
         public SmoothenPitchState(
             Control control,
             PianoRollViewModel vm,
-            IValueTip valueTip) : base(control, vm, valueTip) { }
+            IValueTip valueTip,
+            bool overwrite = false) : base(control, vm, valueTip) {
+            this.overwrite = overwrite;
+        }
         public override void Begin(IPointer pointer, Point point) {
             base.Begin(pointer, point);
         }
         private double GetPitch(int tick, UCurve? curve = null) {
             var point = vm.NotesViewModel.TickToneToPoint(tick, 0);
-            var pitch = vm.NotesViewModel.HitTest.SamplePitch(point);
+            var pitch = overwrite
+                ? vm.NotesViewModel.HitTest.SampleOverwritePitch(point)
+                : vm.NotesViewModel.HitTest.SamplePitch(point);
             if (pitch == null) return 0;
             if (curve == null) return pitch.Value;
             return pitch.Value + curve.Sample(tick);
@@ -1259,7 +2135,9 @@ namespace OpenUtau.App.Views {
     class ResetPitchState : NoteEditState {
         public override MouseButton MouseButton => MouseButton.Right;
         protected override bool ShowValueTip => false;
+        protected override string? commandNameKey => "command.pitch.reset";
         Point lastPoint;
+
         public ResetPitchState(
             Control control,
             PianoRollViewModel vm,

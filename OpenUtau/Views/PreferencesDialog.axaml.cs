@@ -1,10 +1,13 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using OpenUtau.App.ViewModels;
+using OpenUtau.Colors;
 using OpenUtau.Core;
 
 namespace OpenUtau.App.Views {
@@ -13,6 +16,28 @@ namespace OpenUtau.App.Views {
 
         public PreferencesDialog() {
             InitializeComponent();
+        }
+
+        void OnMetronomeSliderPointerPressed(object? sender, PointerPressedEventArgs e) {
+            if (sender is not Slider slider || viewModel == null) {
+                return;
+            }
+            var point = e.GetCurrentPoint(slider);
+            if (!point.Properties.IsRightButtonPressed) {
+                return;
+            }
+            switch (slider.Tag as string) {
+                case "MetronomeVolume":
+                    viewModel.ResetMetronomeVolume();
+                    break;
+                case "MetronomeHighFrequency":
+                    viewModel.ResetMetronomeHighFrequency();
+                    break;
+                case "MetronomeLowFrequency":
+                    viewModel.ResetMetronomeLowFrequency();
+                    break;
+            }
+            e.Handled = true;
         }
 
         void OpenSingersFolder(object sender, RoutedEventArgs e) {
@@ -49,12 +74,12 @@ namespace OpenUtau.App.Views {
         }
 
         async void ReloadSingers(object sender, RoutedEventArgs e) {
-            MessageBox.ShowLoading(this);
+            LoadingWindow.BeginLoading(this);
             await Task.Run(() => {
                 SingerManager.Inst.SearchAllSingers();
             });
             DocManager.Inst.ExecuteCmd(new SingersRefreshedNotification());
-            MessageBox.CloseLoading();
+            LoadingWindow.EndLoading();
         }
 
         void ResetVLabelerPath(object sender, RoutedEventArgs e) {
@@ -116,6 +141,51 @@ namespace OpenUtau.App.Views {
             }
 
             ((PreferencesViewModel)DataContext!).SetWinePath(winePath);
+        }
+
+        void OpenCustomThemeEditor(object sender, RoutedEventArgs e) {
+            if (CustomTheme.IsPackageTheme(viewModel!.ThemeName)) return;
+            ThemeEditorWindow.Show(CustomTheme.Themes[viewModel!.ThemeName]);
+        }
+
+        void OnCustomThemeCreate(object sender, RoutedEventArgs e) {
+            var dialog = new TypeInDialog {
+                Title = ThemeManager.GetString("prefs.appearance.customtheme.create.title")
+            };
+            dialog.SetPrompt(ThemeManager.GetString("prefs.appearance.customtheme.create.prompt"));
+            dialog.onFinish = s => {
+                if (string.IsNullOrEmpty(s)) {
+                    MessageBox.ShowModal(this, 
+                        ThemeManager.GetString("prefs.appearance.customtheme.create.empty"),
+                        ThemeManager.GetString("prefs.appearance.customtheme.create.title"));
+                    return;
+                }
+
+                string filename = string.Join("", s.Where(c => Char.IsLetterOrDigit(c) || c == ' '))
+                                        .Replace(" ", "-").ToLower() + ".yaml";
+
+                var themeYaml = new CustomTheme.ThemeYaml { Name = s };
+
+                File.WriteAllText(Path.Join(PathManager.Inst.ThemesPath, filename),
+                    Yaml.DefaultSerializer.Serialize(themeYaml));
+                viewModel!.RefreshThemes();
+            };
+            dialog.ShowDialog(this);
+        }
+
+        async void OnCustomThemeDelete(object sender, RoutedEventArgs e) {
+            if (CustomTheme.IsPackageTheme(viewModel!.ThemeName)) return;
+            var result = await MessageBox.Show(
+                this,
+                ThemeManager.GetString("prefs.appearance.customtheme.delete.message"),
+                ThemeManager.GetString("prefs.appearance.customtheme.delete.title"),
+                MessageBox.MessageBoxButtons.YesNo);
+            if (result == MessageBox.MessageBoxResult.Yes) {
+                string previousTheme = viewModel!.ThemeItems.TakeWhile(x => x != viewModel!.ThemeName).LastOrDefault()!;
+                File.Delete(CustomTheme.Themes[viewModel!.ThemeName]);
+                viewModel!.RefreshThemes();
+                viewModel!.ThemeName = previousTheme;
+            }
         }
     }
 }

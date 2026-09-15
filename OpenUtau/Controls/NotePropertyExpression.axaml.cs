@@ -19,13 +19,13 @@ namespace OpenUtau.App.Controls {
 
         // textbox
         private string textBoxValue = string.Empty;
-        void OnTextBoxGotFocus(object? sender, GotFocusEventArgs args) {
+        void OnTextBoxGotFocus(object? sender, FocusChangedEventArgs args) {
             Log.Debug("Note property textbox got focus");
             if (sender is TextBox textBox) {
                 textBoxValue = textBox.Text ?? string.Empty;
             }
         }
-        void OnTextBoxLostFocus(object? sender, RoutedEventArgs args) {
+        void OnTextBoxLostFocus(object? sender, FocusChangedEventArgs args) {
             Log.Debug("Note property textbox lost focus");
             if (sender is TextBox textBox && textBoxValue != textBox.Text) {
                 SetNumericalExpressions(textBox.Text);
@@ -38,7 +38,7 @@ namespace OpenUtau.App.Controls {
             if (sender is Control control) {
                 var point = args.GetCurrentPoint(control);
                 if (point.Properties.IsLeftButtonPressed) {
-                    DocManager.Inst.StartUndoGroup();
+                    DocManager.Inst.StartUndoGroup("command.property.edit");
                     NotePropertiesViewModel.PanelControlPressed = true;
                 } else if (point.Properties.IsRightButtonPressed) {
                     SetNumericalExpressions(null);
@@ -74,7 +74,7 @@ namespace OpenUtau.App.Controls {
 
         private void SetNumericalExpressions(string? expression) {
             if (DataContext is NotePropertyExpViewModel viewModel) {
-                DocManager.Inst.StartUndoGroup();
+                DocManager.Inst.StartUndoGroup("command.property.edit");
                 NotePropertiesViewModel.PanelControlPressed = true;
                 viewModel.SetNumericalExpressions(expression);
                 NotePropertiesViewModel.PanelControlPressed = false;

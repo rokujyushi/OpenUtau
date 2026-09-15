@@ -8,14 +8,15 @@ using System.Threading.Tasks;
 using K4os.Hash.xxHash;
 using NetMQ;
 using NetMQ.Sockets;
-using Newtonsoft.Json;
 using OpenUtau.Core;
 using Serilog;
 
 namespace OpenUtau.Integrations {
     internal class VLabelerClient : Core.Util.SingletonBase<VLabelerClient> {
         class HeartbeatRequest {
+#pragma warning disable CS0414
             public string type = "Heartbeat";
+#pragma warning restore CS0414
             public long sentAt = Epoch();
         }
 
@@ -48,6 +49,7 @@ namespace OpenUtau.Integrations {
 
         class NewProjectArgs {
 #pragma warning disable 0649
+#pragma warning disable CS0414
             public string labelerName = "utau-singer.default";
             public string? sampleDirectory;
             public string? cacheDirectory;
@@ -58,10 +60,14 @@ namespace OpenUtau.Integrations {
             public string encoding = Encoding.UTF8.WebName;
             public bool autoExport;
 #pragma warning restore 0649
+#pragma warning restore CS0414
+
         }
 
         class OpenOrCreateRequest {
+#pragma warning disable CS0414
             public string type = "OpenOrCreate";
+#pragma warning restore CS0414
             public string projectFile = string.Empty;
             public GotoEntryByName? gotoEntryByName;
             public NewProjectArgs newProjectArgs = new NewProjectArgs();
@@ -79,7 +85,7 @@ namespace OpenUtau.Integrations {
         private bool Heartbeat() {
             using (var client = new RequestSocket()) {
                 client.Connect("tcp://localhost:32342");
-                string reqStr = JsonConvert.SerializeObject(new HeartbeatRequest());
+                string reqStr = Json.Serialize(new HeartbeatRequest());
                 client.SendFrame(reqStr);
                 if (client.TryReceiveFrameString(TimeSpan.FromMilliseconds(1000), out string? respStr)) {
                     return true;
@@ -109,7 +115,7 @@ namespace OpenUtau.Integrations {
             }
             using (var client = new RequestSocket()) {
                 client.Connect("tcp://localhost:32342");
-                string reqStr = JsonConvert.SerializeObject(request);
+                string reqStr = Json.Serialize(request);
                 client.SendFrame(reqStr);
                 if (!client.TryReceiveFrameString(TimeSpan.FromMilliseconds(1000), out string? respStr)) {
                     Log.Warning($"Failed to OpenOrCreate with vLabeler");

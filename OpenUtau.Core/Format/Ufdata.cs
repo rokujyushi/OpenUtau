@@ -1,8 +1,6 @@
 using System.IO;
 using System.Linq;
 using System.Text;
-using Newtonsoft.Json;
-
 using OpenUtau.Core.Ustx;
 
 //reference: https://github.com/sdercolin/utaformatix-data/blob/main/lib/csharp/UtaFormatix.Data
@@ -104,6 +102,9 @@ namespace OpenUtau.Core.Format
                     ufNote.tickOff - ufNote.tickOn
                 );
                 note.lyric = ufNote.lyric;
+                if (note.lyric == "-") {
+                    note.lyric = "+~";
+                }
                 part.notes.Add(note);
             }
             part.Duration = ufTrack.notes[^1].tickOff;
@@ -115,7 +116,7 @@ namespace OpenUtau.Core.Format
             Ustx.AddDefaultExpressions(project);
             project.FilePath = file;
 
-            var ufProject = JsonConvert.DeserializeObject<UfFile>(File.ReadAllText(file,Encoding.UTF8)).project;
+            var ufProject = Json.Deserialize<UfFile>(File.ReadAllText(file,Encoding.UTF8)).project;
             
             //parse tempo
             project.tempos=ufProject.tempos

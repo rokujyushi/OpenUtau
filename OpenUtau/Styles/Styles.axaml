@@ -50,6 +50,7 @@
     <Setter Property="Command" Value="{Binding Command}"/>
     <Setter Property="CommandParameter" Value="{Binding CommandParameter}"/>
     <Setter Property="Height" Value="{Binding Height}"/>
+    <Setter Property="Icon" Value="{Binding Icon}"/>
   </Style>
 
   <Style Selector="ContextMenu MenuItem">
@@ -62,6 +63,16 @@
     <Setter Property="Header" Value="{Binding Header}"/>
     <Setter Property="Command" Value="{Binding Command}"/>
     <Setter Property="CommandParameter" Value="{Binding CommandParameter}"/>
+  </Style>
+
+  <Style Selector="Path.checkmenu">
+    <Setter Property="IsHitTestVisible" Value="False"/>
+    <Setter Property="Data" Value="M1,5 L4,8 L9,1"/>
+    <Setter Property="Stroke" Value="{DynamicResource AccentBrush1}"/>
+    <Setter Property="StrokeThickness" Value="2"/>
+    <Setter Property="Width" Value="12"/>
+    <Setter Property="Height" Value="12"/>
+    <Setter Property="VerticalAlignment" Value="Center"/>
   </Style>
 
   <Style Selector="TextBlock">
@@ -164,7 +175,7 @@
     <Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource NeutralAccentBrush}" />
     </Style>
-    <Style Selector="^:pressed  /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource NeutralAccentBrushPointerOver}" />
     </Style>
     <Style Selector="^:checked /template/ ContentPresenter#PART_ContentPresenter">
@@ -188,6 +199,12 @@
       <Setter Property="StrokeThickness" Value="1"/>
       <Setter Property="Stroke" Value="{DynamicResource SystemControlForegroundBaseHighBrush}" />
     </Style>
+  </Style>
+
+  <Style Selector="ToggleButton.switch">
+    <Setter Property="FontSize" Value="13"/>
+    <Setter Property="Padding" Value="6,2"/>
+    <Setter Property="BorderThickness" Value="0"/>
   </Style>
 
   <Style Selector="ToggleSwitch /template/ Border#SwitchKnobBounds">
@@ -285,12 +302,15 @@
     <Setter Property="VerticalAlignment" Value="Center"/>
     <Setter Property="HorizontalAlignment" Value="Center"/>
   </Style>
-  <Style Selector="Border.playback Button">
+  <Style Selector="Border.playback Button, Border.playback ToggleButton">
     <Setter Property="Margin" Value="0"/>
     <Setter Property="Padding" Value="0"/>
     <Setter Property="Width" Value="21"/>
     <Setter Property="Height" Value="19"/>
     <Setter Property="Background" Value="Transparent"/>
+  </Style>
+  <Style Selector="Border.playback ToggleButton:checked /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource NeutralAccentBrushSemi}"/>
   </Style>
 
   <Style Selector="Border.tips">
@@ -462,5 +482,53 @@
     <Style Selector="^:down /template/ ToggleButton#ExpanderHeader /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Margin" Value="7,0,0,0"/>
     </Style>
+  </Style>
+
+  <Style Selector="ColorPicker TextBox">
+    <Setter Property="VerticalContentAlignment" Value="Center"/>
+    <Setter Property="CornerRadius" Value="0,4,4,0"/>
+    <Setter Property="Height" Value="32"/>
+    <Setter Property="Padding" Value="5"/>
+    <Setter Property="Margin" Value="0"/>
+  </Style>
+
+  <Style Selector="NotificationCard">
+    <Setter Property="CornerRadius" Value="6"/>
+    <Setter Property="Template">
+      <ControlTemplate>
+        <LayoutTransformControl Name="PART_LayoutTransformControl">
+          <Border Name="PART_ShadowBorder"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  BoxShadow="0 4 12 0 #20000000"
+                  Margin="0,0,0,8">
+            <Border Name="PART_Border"
+                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                    CornerRadius="{TemplateBinding CornerRadius}"
+                    ClipToBounds="True">
+              <Grid ColumnDefinitions="6, *, Auto">
+                <Rectangle Name="PART_AccentBar"
+                           Grid.Column="0"
+                           Width="6"
+                           VerticalAlignment="Stretch"
+                           Fill="{DynamicResource AccentBrush1}"/>
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Grid.Column="1"
+                                  Content="{TemplateBinding Content}"
+                                  Margin="14,10"
+                                  VerticalAlignment="Center">
+                  <ContentPresenter.ContentTemplate>
+                    <DataTemplate>
+                      <TextBlock Text="{Binding Message}"
+                                 TextWrapping="Wrap"
+                                 VerticalAlignment="Center"/>
+                    </DataTemplate>
+                  </ContentPresenter.ContentTemplate>
+                </ContentPresenter>
+              </Grid>
+            </Border>
+          </Border>
+        </LayoutTransformControl>
+      </ControlTemplate>
+    </Setter>
   </Style>
 </Styles>
