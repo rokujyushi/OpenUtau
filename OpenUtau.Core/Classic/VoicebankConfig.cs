@@ -56,7 +56,6 @@ namespace OpenUtau.Classic {
         public bool? UseFilenameAsAlias = null;
         public UExpressionDescriptor[] expressions;
 
-
         public void Save(Stream stream) {
             using (var writer = new StreamWriter(stream, Encoding.UTF8)) {
                 Yaml.DefaultSerializer.Serialize(writer, this);
