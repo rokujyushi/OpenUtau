@@ -99,14 +99,9 @@ namespace OpenUtau.Core.DiffSinger
             }
             var langCode = GetLangCode();
             if(!string.IsNullOrEmpty(langCode)){
-                //Decide per phoneme whether the voicebank names it <langcode>/<phoneme> (multi dict
-                //voicebanks) or plainly <phoneme>. use_lang_id only tells whether the onnx models take
-                //a "languages" input, which is unrelated to how the symbols are named: a multi dict
-                //voicebank can omit the language embedding, and a voicebank that uses it still has
-                //unprefixed symbols such as SP and AP. So ask the phoneme list instead.
-                foreach(var ph in GetBaseG2pVowels().Concat(GetBaseG2pConsonants())){
+                //For diffsinger multi dict voicebanks, the replacements of g2p phonemes default to the <langcode>/<phoneme>
+                foreach (var ph in GetBaseG2pVowels().Concat(GetBaseG2pConsonants())){
                     if(replacements.ContainsKey(ph)){
-                        //The dictionary declared a replacement explicitly, it wins.
                         continue;
                     }
                     var prefixed = langCode + "/" + ph;
@@ -115,8 +110,6 @@ namespace OpenUtau.Core.DiffSinger
                     } else if(IsPhonemeSupported(ph)){
                         replacements[ph] = ph;
                     } else {
-                        //Neither name is supported by this voicebank, the phoneme gets rejected either
-                        //way. Keep the name that matches the voicebank's convention for the error message.
                         replacements[ph] = useLangId ? prefixed : ph;
                     }
                 }
