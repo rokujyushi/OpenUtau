@@ -76,8 +76,7 @@ namespace OpenUtau.Core.DiffSinger
                 }
             }
             this.frameMs = dsConfig.frameMs();
-            //Load phonemes list before g2p, so that LoadG2p can tell which symbol
-            //names this voicebank actually supports.
+            //Load phonemes list
             string phonemesPath = Path.Combine(rootPath, dsConfig.phonemes);
             phonemeTokens = DiffSingerUtils.LoadPhonemes(phonemesPath);
             //Load g2p
