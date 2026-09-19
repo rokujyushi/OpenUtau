@@ -5,11 +5,11 @@
         mc:Ignorable="d" MinWidth="200" MinHeight="200" Width="350" Height="350"
         x:Class="OpenUtau.App.Views.VoiceColorMappingDialog"
         Icon="/Assets/open-utau.ico"
-        Title="{DynamicResource dialogs.voicecolorremapping}"
+        Title="{Binding WindowTitle}"
         WindowStartupLocation="CenterOwner">
   <Grid RowDefinitions="40,1*,30" Margin="10">
     <StackPanel Grid.Row="0" >
-      <TextBlock Text="{DynamicResource dialogs.voicecolorremapping.caption}" />
+      <TextBlock Text="{Binding Caption}" />
       <TextBlock Text="{Binding TrackName}" />
     </StackPanel>
 

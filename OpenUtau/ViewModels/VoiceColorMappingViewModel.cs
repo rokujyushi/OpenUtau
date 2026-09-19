@@ -7,6 +7,8 @@ namespace OpenUtau.App.ViewModels {
     public class VoiceColorMappingViewModel : ViewModelBase {
 
         public string TrackName { get; set; }
+        public string WindowTitle { get; set; } = ThemeManager.GetString("dialogs.voicecolorremapping");
+        public string Caption { get; set; } = ThemeManager.GetString("dialogs.voicecolorremapping.caption");
         public ObservableCollection<ColorMapping> ColorMappings { get; set; } = new ObservableCollection<ColorMapping>();
 
         public VoiceColorMappingViewModel(string[] oldColors, string[] newColors, string trackName) {
