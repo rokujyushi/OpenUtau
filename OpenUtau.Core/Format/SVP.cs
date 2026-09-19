@@ -339,6 +339,11 @@ namespace OpenUtau.Core.Format {
                         if (!project.expressions.ContainsKey(abbr)) {
                             project.RegisterExpression(new UExpressionDescriptor(mode, abbr, -200, 200, 0) { type = UExpressionType.Curve });
                         }
+                        // A vocal mode blends timbres, but which voice color of the OpenUtau
+                        // singer it stands for can only be decided once a singer is assigned.
+                        if (!project.importedBlendCurves.Contains(abbr)) {
+                            project.importedBlendCurves.Add(abbr);
+                        }
 
                         var gPts = grpModes.ContainsKey(mode) ? grpModes[mode] : new List<(double x, double y)>();
                         var tPts = trkModes.ContainsKey(mode) ? trkModes[mode] : new List<(double x, double y)>();

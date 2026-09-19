@@ -168,6 +168,11 @@ namespace OpenUtau.Core.Format {
                         project.expressions.Add(abbr, descriptor);
                     }
                 }
+                foreach (var abbr in loaded.importedBlendCurves) {
+                    if (!project.importedBlendCurves.Contains(abbr)) {
+                        project.importedBlendCurves.Add(abbr);
+                    }
+                }
                 foreach (var track in loaded.tracks) {
                     track.TrackNo = project.tracks.Count;
                     project.tracks.Add(track);

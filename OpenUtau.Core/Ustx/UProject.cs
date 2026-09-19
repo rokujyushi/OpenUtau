@@ -54,6 +54,12 @@ namespace OpenUtau.Core.Ustx {
         public List<UTempo> tempos;
         public List<UTrack> tracks;
         [YamlIgnore] public List<UPart> parts;
+        /// <summary>
+        /// Abbreviations of curves brought in from another format that blend voice colors,
+        /// such as vocal modes of an imported SVP project. Kept only until the user assigns
+        /// a singer and decides what they map to, and never saved to the project file.
+        /// </summary>
+        [YamlIgnore] public List<string> importedBlendCurves = new List<string>();
         [YamlIgnore] public bool SoloTrackExist { get => tracks.Any(t => t.Solo); }
 
         /// <summary>
