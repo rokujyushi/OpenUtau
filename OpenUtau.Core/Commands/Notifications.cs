@@ -251,6 +251,18 @@ namespace OpenUtau.Core {
         public override string ToString() => "Voice color remapping.";
     }
 
+    public class BlendCurveMappingNotification : UNotification {
+        public readonly int TrackNo;
+        /// <summary>
+        /// Raised when the user asks to assign a curve of a track to a voice color.
+        /// </summary>
+        /// <param name="trackNo">Track number to assign curves for.</param>
+        public BlendCurveMappingNotification(int trackNo) {
+            TrackNo = trackNo;
+        }
+        public override string ToString() => "Blend curve mapping.";
+    }
+
     public class OtoChangedNotification : UNotification {
         public readonly bool external;
         public OtoChangedNotification(bool external = false) {

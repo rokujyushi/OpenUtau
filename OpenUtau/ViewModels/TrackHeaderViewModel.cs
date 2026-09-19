@@ -642,6 +642,12 @@ namespace OpenUtau.App.ViewModels {
             }
         }
 
+        public void BlendCurveMapping() {
+            if (track.Singer != null && track.Singer.Found) {
+                DocManager.Inst.ExecuteCmd(new BlendCurveMappingNotification(track.TrackNo));
+            }
+        }
+
         public void OpenMixFxDialog() {
             if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow != null) {
                 var dialog = new MixFxDialog(track);

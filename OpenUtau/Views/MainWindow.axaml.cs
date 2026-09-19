@@ -54,6 +54,9 @@ namespace OpenUtau.App.Views {
 
         private bool shouldOpenPartsContextMenu;
 
+        // Tracks that were already offered blend curve mapping in this session.
+        private readonly HashSet<int> blendCurvesAskedTracks = new HashSet<int>();
+
         private readonly ReactiveCommand<UPart, RxVoid> PartRenameCommand;
         private readonly ReactiveCommand<UPart, RxVoid> PartGotoFileCommand;
         private readonly ReactiveCommand<UPart, RxVoid> PartReplaceAudioCommand;
@@ -1902,54 +1905,110 @@ namespace OpenUtau.App.Views {
                 if (track.ValidateVoiceColor(out var oldColors, out var newColors)) {
                     await VoiceColorRemappingAsync(track, oldColors, newColors);
                 }
-                await RemapImportedVocalModesAsync(track);
             }
             DocManager.Inst.EndUndoGroup();
         }
 
-        async Task RemapImportedVocalModesAsync(UTrack track) {
-            if (track.Singer?.SingerType != USingerType.DiffSinger) return;
+        /// <summary>
+        /// Lets the user assign curves that blend voice colors, such as vocal modes carried
+        /// over from an imported project, to the voice colors of the track singer.
+        /// </summary>
+        /// <param name="candidates">Abbreviations of the curves to offer as a source.</param>
+        /// <param name="manually">True when the user asked for this, which reports an empty result.</param>
+        async Task MapBlendCurvesAsync(UTrack track, string[] candidates, bool manually) {
+            if (track.Singer == null || !track.Singer.Found) return;
             track.Singer.EnsureLoaded();
             if (!track.Singer.Loaded) return;
-            var parts = DocManager.Inst.Project.parts.Where(p => p.trackNo == track.TrackNo && p is UVoicePart).Cast<UVoicePart>().ToArray();
-            var modes = parts.SelectMany(p => p.curves)
-                .Where(c => c.descriptor != null && IsImportedVocalModeCurve(c.abbr))
-                .Select(c => c.descriptor.name)
-                .Where(n => !string.IsNullOrWhiteSpace(n))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+            // Only DiffSinger renders voice color curves. A classic singer blends
+            // voice colors through clr, clry and the xsy curve instead.
+            if (track.Singer.SingerType != USingerType.DiffSinger) {
+                if (manually) {
+                    await MessageBox.Show(this, ThemeManager.GetString("dialogs.blendcurvemapping.error"), ThemeManager.GetString("errors.caption"), MessageBox.MessageBoxButtons.Ok);
+                }
+                return;
+            }
+            var parts = DocManager.Inst.Project.parts
+                .Where(part => part.trackNo == track.TrackNo && part is UVoicePart)
+                .Cast<UVoicePart>()
                 .ToArray();
-            if (modes.Length == 0) return;
-
-            var oldModes = new[] { "" }.Concat(modes).ToArray();
-            var colors = track.Singer.Subbanks.Select(s => s.Color).ToArray();
-            var dialog = new VoiceColorMappingDialog { DataContext = new VoiceColorMappingViewModel(oldModes, colors, track.TrackName) };
+            var sources = candidates
+                .Where(abbr => parts.Any(part => part.curves.Any(curve => curve.abbr == abbr && !curve.IsEmpty)))
+                .ToArray();
+            var colors = track.Singer.Subbanks.Select(subbank => subbank.Color).Distinct().ToArray();
+            if (sources.Length == 0 || colors.Length < 2) {
+                if (manually) {
+                    await MessageBox.Show(this, ThemeManager.GetString("dialogs.blendcurvemapping.error"), ThemeManager.GetString("errors.caption"), MessageBox.MessageBoxButtons.Ok);
+                }
+                return;
+            }
+            var names = sources
+                .Select(abbr => DocManager.Inst.Project.expressions.TryGetValue(abbr, out var descriptor) && !string.IsNullOrWhiteSpace(descriptor.name)
+                    ? descriptor.name
+                    : abbr)
+                .ToArray();
+            var vm = new VoiceColorMappingViewModel(new[] { "" }.Concat(names).ToArray(), colors, track.TrackName) {
+                WindowTitle = ThemeManager.GetString("dialogs.blendcurvemapping"),
+                Caption = ThemeManager.GetString("dialogs.blendcurvemapping.caption"),
+            };
+            var dialog = new VoiceColorMappingDialog { DataContext = vm };
             await dialog.ShowDialog(this);
             if (!dialog.Apply) return;
+            var mappings = vm.ColorMappings.Where(m => m.OldIndex > 0 && m.SelectedIndex > 0).ToArray();
+            if (mappings.Length == 0) return;
 
-            foreach (var mapping in ((VoiceColorMappingViewModel)dialog.DataContext).ColorMappings.Where(m => m.OldIndex > 0 && m.SelectedIndex > 0)) {
-                var sourceName = modes[mapping.OldIndex - 1];
-                var sourceDescriptor = DocManager.Inst.Project.expressions.Values.FirstOrDefault(d => d.name.Equals(sourceName, StringComparison.OrdinalIgnoreCase));
-                if (sourceDescriptor == null) continue;
-                string targetAbbr = $"cl{mapping.SelectedIndex:D2}";
-                if (!DocManager.Inst.Project.expressions.TryGetValue(targetAbbr, out var targetDescriptor)) {
-                    targetDescriptor = new UExpressionDescriptor($"voice color {colors[mapping.SelectedIndex]}", targetAbbr, 0, 100, 0) { type = UExpressionType.Curve };
-                    DocManager.Inst.Project.RegisterExpression(targetDescriptor);
+            DocManager.Inst.StartUndoGroup("command.track.remapvc");
+            try {
+                foreach (var mapping in mappings) {
+                    string sourceAbbr = sources[mapping.OldIndex - 1];
+                    string targetAbbr = $"cl{mapping.SelectedIndex:D2}";
+                    if (!DocManager.Inst.Project.expressions.ContainsKey(targetAbbr)) {
+                        var descriptor = new UExpressionDescriptor($"voice color {colors[mapping.SelectedIndex]}", targetAbbr, 0, 100, 0) { type = UExpressionType.Curve };
+                        DocManager.Inst.ExecuteCmd(new ConfigureExpressionsCommand(
+                            DocManager.Inst.Project,
+                            DocManager.Inst.Project.expressions.Values.Append(descriptor).ToArray()));
+                    }
+                    foreach (var part in parts) {
+                        var source = part.curves.FirstOrDefault(curve => curve.abbr == sourceAbbr);
+                        if (source == null || part.curves.Any(curve => curve.abbr == targetAbbr)) continue;
+                        DocManager.Inst.ExecuteCmd(new PasteCurveCommand(
+                            DocManager.Inst.Project, part, targetAbbr,
+                            source.xs.ToList(),
+                            // An imported curve may run 0-1 where a voice color curve runs 0-100.
+                            source.ys.Select(y => Math.Clamp(y <= 1 ? y * 100 : y, 0, 100)).ToList()));
+                    }
                 }
-                foreach (var part in parts) {
-                    var source = part.curves.FirstOrDefault(c => c.abbr == sourceDescriptor.abbr);
-                    if (source == null || part.curves.Any(c => c.abbr == targetAbbr)) continue;
-                    part.curves.Add(new UCurve(targetDescriptor) { xs = source.xs.ToList(), ys = source.ys.Select(y => Math.Clamp(y <= 1 ? y * 100 : y, 0, 100)).ToList() });
-                }
+            } finally {
+                DocManager.Inst.EndUndoGroup();
             }
         }
 
-        static bool IsImportedVocalModeCurve(string abbr) {
-            if (abbr.StartsWith("cl", StringComparison.OrdinalIgnoreCase)) return false;
-            return abbr != Ustx.DYN && abbr != Ustx.PITD && abbr != Ustx.TENC &&
-                abbr != Ustx.BREC && abbr != Ustx.GENC && abbr != Ustx.VOIC &&
-                abbr != Ustx.SHFC && abbr != Ustx.CLR && abbr != Ustx.CLRY &&
-                abbr != "opec";
+        string[] CurveAbbrsOf(UTrack track) {
+            return DocManager.Inst.Project.parts
+                .Where(part => part.trackNo == track.TrackNo && part is UVoicePart)
+                .Cast<UVoicePart>()
+                .SelectMany(part => part.curves)
+                .Select(curve => curve.abbr)
+                .Where(abbr => !IsVoiceColorCurve(abbr))
+                .Distinct()
+                .OrderBy(abbr => abbr)
+                .ToArray();
         }
+
+        // A voice color curve such as cl01 is what other curves get assigned to, never a source.
+        static bool IsVoiceColorCurve(string abbr) {
+            return abbr.Length == 4 && abbr.StartsWith("cl", StringComparison.Ordinal) &&
+                char.IsDigit(abbr[2]) && char.IsDigit(abbr[3]);
+        }
+
+        // OnNext is synchronous, so surface failures of a dialog task instead of dropping them.
+        void ShowDialogTask(Task task) {
+            task.ContinueWith(t => {
+                if (t.IsFaulted && t.Exception != null) {
+                    DocManager.Inst.ExecuteCmd(new ErrorMessageNotification(t.Exception));
+                }
+            }, TaskScheduler.FromCurrentSynchronizationContext());
+        }
+
         async Task VoiceColorRemappingAsync(UTrack track, string[] oldColors, string[] newColors) {
             var parts = DocManager.Inst.Project.parts
                 .Where(part => part.trackNo == track.TrackNo && part is UVoicePart)
@@ -2079,11 +2138,24 @@ namespace OpenUtau.App.Views {
                         } else {
                             VoiceColorRemapping(track, track.VoiceColorNames, track.VoiceColorExp.options, true);
                         }
-                    } else if (track.ValidateVoiceColor(out var oldColors, out var newColors)) { // Verify whether remapping is required when the singer is changed
-                        VoiceColorRemapping(track, oldColors, newColors);
+                    } else {
+                        if (track.ValidateVoiceColor(out var oldColors, out var newColors)) { // Verify whether remapping is required when the singer is changed
+                            VoiceColorRemapping(track, oldColors, newColors);
+                        }
+                        // Offer curve assignment only for a project just brought in from
+                        // another format, and only once per track.
+                        if (DocManager.Inst.Project.importedBlendCurves.Count > 0 && blendCurvesAskedTracks.Add(track.TrackNo)) {
+                            ShowDialogTask(MapBlendCurvesAsync(track, DocManager.Inst.Project.importedBlendCurves.ToArray(), false));
+                        }
                     }
-                    _ = RemapImportedVocalModesAsync(track);
                 }
+            } else if (cmd is BlendCurveMappingNotification blendNotif) {
+                if (blendNotif.TrackNo >= 0 && blendNotif.TrackNo < DocManager.Inst.Project.tracks.Count) {
+                    UTrack track = DocManager.Inst.Project.tracks[blendNotif.TrackNo];
+                    ShowDialogTask(MapBlendCurvesAsync(track, CurveAbbrsOf(track), true));
+                }
+            } else if (cmd is LoadProjectNotification) {
+                blendCurvesAskedTracks.Clear();
             }
         }
     }
