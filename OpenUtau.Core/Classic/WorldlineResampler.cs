@@ -50,7 +50,7 @@ namespace OpenUtau.Classic {
             expressions = new Dictionary<string, UExpressionDescriptor> {
                 { "ten", new UExpressionDescriptor("tension","ten",-100,100,0,"Mt") },
                 { "brea", new UExpressionDescriptor("breathiness","brea",-100,100,0,"Mb") },
-                { "voi", new UExpressionDescriptor("voicing","voi",0,100,0,"Mv") }
+                { "voi", new UExpressionDescriptor("voicing","voi",0,100,100,"Mv") }
             },
             expressionFilter = false
         };
