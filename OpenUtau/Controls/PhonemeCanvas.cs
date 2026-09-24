@@ -110,7 +110,7 @@ namespace OpenUtau.App.Controls {
             context.DrawRectangle(Background, null, Bounds.WithX(0).WithY(0));
             // Renderers that do not use envelopes ignore the envelope handles (Preutter/Attack/Release/Overlap),
             // so they draw each phoneme as a simple rectangle (bar) rather than drawing the shape of the envelope.
-            bool usesBarDisplay = PhonemeUIRender.UsesBarDisplay(Part);
+            bool supportsEnvelope = PhonemeUIRender.SupportsPhonemeEnvelope(Part);
             double leftTick = TickOffset - 480;
             double rightTick = TickOffset + Bounds.Width / TickWidth + 480;
             bool raiseText = false;
@@ -128,7 +128,7 @@ namespace OpenUtau.App.Controls {
                 double x = Math.Round(viewModel.TickToneToPoint(phoneme.position, 0).X) + 0.5;
                 double posMs = phoneme.PositionMs;
                 if (!phoneme.Error) {
-                    if (usesBarDisplay) {
+                    if (!supportsEnvelope) {
                         double xRight = Math.Round(viewModel.TickToneToPoint(phoneme.End, 0).X) + 0.5;
                         var brushBar = selectedNotes.Contains(phoneme.Parent) ? ThemeManager.AccentBrush2Semi : ThemeManager.AccentBrush1Semi;
                         context.DrawRectangle(brushBar, null, new Rect(x, y, xRight - x, height));

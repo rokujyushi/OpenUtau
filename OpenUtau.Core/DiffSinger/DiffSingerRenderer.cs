@@ -47,7 +47,7 @@ namespace OpenUtau.Core.DiffSinger {
 
         public bool SupportsRealCurve => true;
 
-        public bool SupportsPhonemeEnvelope => true;
+        public bool SupportsPhonemeEnvelope => false;
 
         public bool IsVoiceColorCurve(string abbr, out int subBankId) {
             subBankId = 0;

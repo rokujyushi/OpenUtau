@@ -59,7 +59,7 @@ namespace OpenUtau.Core.Enunu {
 
         public bool SupportsRenderPitch => true;
 
-        public bool SupportsPhonemeEnvelope => true;
+        public bool SupportsPhonemeEnvelope => false;
 
         public bool SupportsExpression(UExpressionDescriptor descriptor) {
             return supportedExp.Contains(descriptor.abbr);

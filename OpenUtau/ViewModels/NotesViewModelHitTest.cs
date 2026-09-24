@@ -362,7 +362,7 @@ namespace OpenUtau.App.ViewModels {
             double leftTick = viewModel.TickOffset - 480;
             double rightTick = leftTick + viewModel.ViewportTicks + 480;
             // Since handles are no longer needed in renderers that ignore envelopes, handle hit testing has been skipped (the line indicating the position can still be dragged).
-            if (!PhonemeUIRender.UsesBarDisplay(viewModel.Part)) {
+            if (PhonemeUIRender.SupportsPhonemeEnvelope(viewModel.Part)) {
                 foreach (var phoneme in viewModel.Part.phonemes) {
                     double leftBound = timeAxis.MsPosToTickPos(phoneme.PositionMs - phoneme.preutter) - viewModel.Part.position;
                     double rightBound = phoneme.End;

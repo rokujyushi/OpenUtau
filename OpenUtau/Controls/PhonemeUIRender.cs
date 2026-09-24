@@ -8,9 +8,9 @@ using OpenUtau.Core.Util;
 
 namespace OpenUtau.App.Controls {
     static class PhonemeUIRender {
-        public static bool UsesBarDisplay(UVoicePart part) {
+        public static bool SupportsPhonemeEnvelope(UVoicePart part) {
             var track = DocManager.Inst.Project.tracks[part.trackNo];
-            return track.RendererSettings.Renderer?.UsesBarDisplay ?? false;
+            return track.RendererSettings.Renderer?.SupportsPhonemeEnvelope ?? true;
         }
 
         public static string getLangCode(UVoicePart part) {
