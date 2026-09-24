@@ -9,9 +9,10 @@ using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Util;
 using Serilog;
 
-namespace OpenUtau.Core.DiffSinger {
+namespace OpenUtau.Core.Render {
     /// <summary>
-    /// When enabled, regenerates DiffSinger pitch curves (Ctrl+R) after relevant piano roll edits.
+    /// When enabled, regenerates pitch curves (Ctrl+R) after relevant piano roll edits,
+    /// for renderers whose <see cref="IRenderer.LivePitchCost"/> is not Unsupported.
     /// </summary>
     public sealed class RealTimePitchGenerationService : ICmdSubscriber {
         public static RealTimePitchGenerationService Inst { get; } = new();
@@ -34,14 +35,19 @@ namespace OpenUtau.Core.DiffSinger {
         readonly Dictionary<UVoicePart, CancellationTokenSource> debounceTokens = new();
         readonly Dictionary<UVoicePart, HashSet<UNote>> pendingNotesByPart = new();
         readonly HashSet<UVoicePart> lyricPendingParts = new();
+        // Heavy renderers: parts currently generating, and parts edited meanwhile that need one more run.
+        readonly HashSet<UVoicePart> runningParts = new();
+        readonly HashSet<UVoicePart> rerunParts = new();
         readonly LoadRenderedPitch pitchLoader = new();
 
+        /// <summary>Delay multiplier for <see cref="LivePitchCost.Heavy"/> renderers.</summary>
+        const int HeavyDelayScale = 4;
+
         readonly struct RealtimePitchSettings {
-            public double PitchSteps { get; init; }
+            public PitchGenerationOptions Options { get; init; }
             public int DebounceMs { get; init; }
             public int LyricFallbackMs { get; init; }
             public int AfterPhonemizeMs { get; init; }
-            public bool FastRealtime { get; init; }
         }
 
         static LivePitchMode ActiveMode =>
@@ -51,18 +57,16 @@ namespace OpenUtau.Core.DiffSinger {
 
         static RealtimePitchSettings GetSettings() => ActiveMode switch {
             LivePitchMode.Normal => new RealtimePitchSettings {
-                PitchSteps = 2,
+                Options = new PitchGenerationOptions(Steps: 2, FastRealtime: false),
                 DebounceMs = 200,
                 LyricFallbackMs = 1200,
                 AfterPhonemizeMs = 50,
-                FastRealtime = false,
             },
             LivePitchMode.Fast => new RealtimePitchSettings {
-                PitchSteps = 0.1,
+                Options = new PitchGenerationOptions(Steps: 0.1, FastRealtime: true),
                 DebounceMs = 80,
                 LyricFallbackMs = 800,
                 AfterPhonemizeMs = 30,
-                FastRealtime = true,
             },
             _ => default,
         };
@@ -118,8 +122,12 @@ namespace OpenUtau.Core.DiffSinger {
         }
 
         void SchedulePart(UVoicePart part, int delayMs) {
-            if (!IsDiffSingerPart(part)) {
+            var cost = GetLivePitchCost(part);
+            if (cost == LivePitchCost.Unsupported) {
                 return;
+            }
+            if (cost == LivePitchCost.Heavy) {
+                delayMs *= HeavyDelayScale;
             }
             CancellationTokenSource cts;
             lock (scheduleLock) {
@@ -144,8 +152,26 @@ namespace OpenUtau.Core.DiffSinger {
                     if (debounceTokens.TryGetValue(part, out var current) && current == cts) {
                         debounceTokens.Remove(part);
                     }
+                    if (cost == LivePitchCost.Heavy && !runningParts.Add(part)) {
+                        // Still generating: keep the pending notes and run once more when it finishes.
+                        rerunParts.Add(part);
+                        return;
+                    }
                 }
-                RunForPart(part, token);
+                try {
+                    RunForPart(part, token);
+                } finally {
+                    if (cost == LivePitchCost.Heavy) {
+                        bool rerun;
+                        lock (scheduleLock) {
+                            runningParts.Remove(part);
+                            rerun = rerunParts.Remove(part);
+                        }
+                        if (rerun) {
+                            SchedulePart(part, 0);
+                        }
+                    }
+                }
             });
         }
 
@@ -155,7 +181,7 @@ namespace OpenUtau.Core.DiffSinger {
             }
             var settings = GetSettings();
             var project = DocManager.Inst.Project;
-            if (!project.parts.Contains(part) || !IsDiffSingerPart(part)) {
+            if (!project.parts.Contains(part) || GetLivePitchCost(part) == LivePitchCost.Unsupported) {
                 return;
             }
             List<UNote> affectedNotes;
@@ -178,21 +204,21 @@ namespace OpenUtau.Core.DiffSinger {
                     project, part, affectedNotes,
                     DocManager.Inst,
                     cancellationToken,
-                    settings.PitchSteps,
-                    settings.FastRealtime);
+                    settings.Options);
             } catch (Exception e) {
                 Log.Warning(e, "Real-time pitch generation failed.");
             }
         }
 
-        static bool IsDiffSingerPart(UVoicePart part) {
+        static LivePitchCost GetLivePitchCost(UVoicePart part) {
             if (part == null || part.trackNo < 0 || part.trackNo >= DocManager.Inst.Project.tracks.Count) {
-                return false;
+                return LivePitchCost.Unsupported;
             }
             var renderer = DocManager.Inst.Project.tracks[part.trackNo].RendererSettings.Renderer;
-            return renderer != null
-                && renderer.SupportsRenderPitch
-                && renderer.SingerType == USingerType.DiffSinger;
+            if (renderer == null || !renderer.SupportsRenderPitch) {
+                return LivePitchCost.Unsupported;
+            }
+            return renderer.LivePitchCost;
         }
     }
 }

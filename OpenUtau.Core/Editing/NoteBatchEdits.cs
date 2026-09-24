@@ -4,7 +4,6 @@ using System.Linq;
 using System.Threading;
 using OpenUtau.Core.Ustx;
 using OpenUtau.Core.Format;
-using OpenUtau.Core.DiffSinger;
 
 namespace OpenUtau.Core.Editing {
     public class AddTailNote : BatchEdit {
@@ -465,21 +464,20 @@ namespace OpenUtau.Core.Editing {
         /// <summary>Live pitch only; must not replace <see cref="RunAsync"/> (BatchEdit interface).</summary>
         internal void RunLive(
             UProject project, UVoicePart part, List<UNote> selectedNotes, DocManager docManager,
-            CancellationToken cancellationToken, double pitchSteps, bool fastRealtime) {
+            CancellationToken cancellationToken, Render.PitchGenerationOptions options) {
             RunInternal(
                 project, part, selectedNotes, docManager,
                 (_, _) => { }, cancellationToken,
                 recordUndo: false,
                 showUnsupportedError: false,
-                pitchSteps: pitchSteps,
-                fastRealtime: fastRealtime);
+                options: options);
         }
 
         void RunInternal(
             UProject project, UVoicePart part, List<UNote> selectedNotes, DocManager docManager,
             Action<int, int> setProgressCallback, CancellationToken cancellationToken,
-            bool recordUndo = true, bool showUnsupportedError = true, double? pitchSteps = null,
-            bool fastRealtime = false) {
+            bool recordUndo = true, bool showUnsupportedError = true,
+            Render.PitchGenerationOptions? options = null) {
             var renderer = project.tracks[part.trackNo].RendererSettings.Renderer;
             if (renderer == null || !renderer.SupportsRenderPitch) {
                 if (showUnsupportedError) {
@@ -504,13 +502,9 @@ namespace OpenUtau.Core.Editing {
             var commands = new List<SetCurveCommand>();
             for (int ph_i = phrases.Count() - 1; ph_i >= 0; ph_i--) {
                 var phrase = phrases[ph_i];
-                Render.RenderPitchResult result;
-                if (pitchSteps.HasValue && renderer is DiffSingerRenderer diffSingerRenderer) {
-                    result = diffSingerRenderer.LoadRenderedPitchLive(
-                        phrase, positions, pitchSteps.Value, fastRealtime);
-                } else {
-                    result = renderer.LoadRenderedPitch(phrase, positions);
-                }
+                Render.RenderPitchResult result = options != null
+                    ? renderer.LoadRenderedPitch(phrase, positions, options)
+                    : renderer.LoadRenderedPitch(phrase, positions);
                 if (result == null) {
                     continue;
                 }
@@ -518,7 +512,7 @@ namespace OpenUtau.Core.Editing {
                 if (cancellationToken.IsCancellationRequested) break;
                 // Take the first negative tick before start and the first tick after end for each segment;
                 // Reverse traversal, so that when the score slices are too close, priority is given to covering the consonant pitch of the next segment, reducing the impact on vowels.
-                foreach (var (start, end) in DiffSingerRetake.GetRetakeFrameRanges(
+                foreach (var (start, end) in Render.PitchRetake.GetRetakeFrameRanges(
                     result.retakeMask, result.tones.Length)) {
                     int? lastX = null;
                     int? lastY = null;
@@ -572,7 +566,7 @@ namespace OpenUtau.Core.Editing {
                     commands.ForEach(docManager.ExecuteCmd);
                     docManager.EndUndoGroup();
                 } else {
-                    docManager.ApplyTransient(commands, validateOptions, preRender: !fastRealtime);
+                    docManager.ApplyTransient(commands, validateOptions, preRender: options?.FastRealtime != true);
                 }
             });
         }

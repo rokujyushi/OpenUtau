@@ -62,7 +62,7 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial bool ShowFinalPitch { get; set; }
         [Reactive] public partial bool LivePitchNormal { get; set; }
         [Reactive] public partial bool LivePitchFast { get; set; }
-        [Reactive] public partial bool IsDiffSinger { get; set; }
+        [Reactive] public partial bool SupportsLivePitch { get; set; }
         bool livePitchSyncing;
         [Reactive] public partial bool ShowWaveform { get; set; }
         [Reactive] public partial bool ShowPhoneme { get; set; }
@@ -627,17 +627,19 @@ namespace OpenUtau.App.ViewModels {
                 return;
             }
             TickOrigin = Part.position;
-            UpdateIsDiffSinger();
+            UpdateSupportsLivePitch();
             Notify();
         }
 
-        void UpdateIsDiffSinger() {
+        void UpdateSupportsLivePitch() {
             if (Project == null || Part == null || Part.trackNo < 0 || Part.trackNo >= Project.tracks.Count) {
-                IsDiffSinger = false;
+                SupportsLivePitch = false;
                 return;
             }
             var renderer = Project.tracks[Part.trackNo].RendererSettings.Renderer;
-            IsDiffSinger = renderer != null && renderer.SingerType == USingerType.DiffSinger;
+            SupportsLivePitch = renderer != null
+                && renderer.SupportsRenderPitch
+                && renderer.LivePitchCost != Core.Render.LivePitchCost.Unsupported;
         }
 
         private void DeselectNote(UNote note) {
@@ -1264,7 +1266,7 @@ namespace OpenUtau.App.ViewModels {
                         LoadPortrait(Part, Project);
                     }
                 }
-                UpdateIsDiffSinger();
+                UpdateSupportsLivePitch();
                 PrimaryKeyNotSupported = !IsExpSupported(PrimaryKey);
             }
         }
