@@ -553,7 +553,7 @@
               </Grid>
             </ToggleButton>
             <ToggleButton Classes="toolbar" Margin="0" Padding="1" Height="20" Width="20" IsChecked="{Binding NotesViewModel.LivePitchFast}"
-                          IsVisible="{Binding NotesViewModel.SupportsLivePitch}"
+                          IsVisible="{Binding NotesViewModel.SupportsFastLivePitch}"
                           ToolTip.Tip="{DynamicResource pianoroll.toggle.livepitch.fast}">
               <Grid Width="18" Height="18">
                 <Path Classes="filled" Data="M11 15H6L13 1V9H18L11 23V15Z">

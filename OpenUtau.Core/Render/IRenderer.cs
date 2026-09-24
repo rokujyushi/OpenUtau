@@ -116,6 +116,11 @@ namespace OpenUtau.Core.Render {
         bool SupportsRenderPitch { get; }
         bool SupportsRealCurve { get { return false; } }
         LivePitchCost LivePitchCost { get { return LivePitchCost.Unsupported; } }
+        /// <summary>
+        /// Whether live pitch Fast mode (fewer sampling steps) makes a difference.
+        /// When false, Fast mode runs as Normal for this renderer.
+        /// </summary>
+        bool SupportsFastLivePitch { get { return false; } }
         bool SupportsExpression(UExpressionDescriptor descriptor);
         RenderResult Layout(RenderPhrase phrase);
 

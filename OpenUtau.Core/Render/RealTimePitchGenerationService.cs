@@ -55,7 +55,19 @@ namespace OpenUtau.Core.Render {
 
         static bool IsEnabled => ActiveMode != LivePitchMode.Off;
 
-        static RealtimePitchSettings GetSettings() => ActiveMode switch {
+        /// <summary>
+        /// Settings for the part's renderer. Fast mode runs as Normal when the renderer
+        /// does not support it.
+        /// </summary>
+        static RealtimePitchSettings GetSettings(UVoicePart part) {
+            var mode = ActiveMode;
+            if (mode == LivePitchMode.Fast && GetRenderer(part)?.SupportsFastLivePitch != true) {
+                mode = LivePitchMode.Normal;
+            }
+            return GetSettings(mode);
+        }
+
+        static RealtimePitchSettings GetSettings(LivePitchMode mode) => mode switch {
             LivePitchMode.Normal => new RealtimePitchSettings {
                 Options = new PitchGenerationOptions(Steps: 2, FastRealtime: false),
                 DebounceMs = 200,
@@ -81,13 +93,12 @@ namespace OpenUtau.Core.Render {
             if (isUndo || SuppressCallbacks || !IsEnabled) {
                 return;
             }
-            var settings = GetSettings();
             if (cmd is ChangeNoteLyricCommand lyricCmd) {
                 lock (scheduleLock) {
                     lyricPendingParts.Add(lyricCmd.Part);
                     TrackAffectedNotes(lyricCmd.Part, lyricCmd.Notes);
                 }
-                SchedulePart(lyricCmd.Part, settings.LyricFallbackMs);
+                SchedulePart(lyricCmd.Part, GetSettings(lyricCmd.Part).LyricFallbackMs);
                 return;
             }
             if (cmd is PhonemizedNotification phonemized) {
@@ -96,7 +107,7 @@ namespace OpenUtau.Core.Render {
                     schedule = lyricPendingParts.Remove(phonemized.part);
                 }
                 if (schedule) {
-                    SchedulePart(phonemized.part, settings.AfterPhonemizeMs);
+                    SchedulePart(phonemized.part, GetSettings(phonemized.part).AfterPhonemizeMs);
                 }
                 return;
             }
@@ -104,7 +115,7 @@ namespace OpenUtau.Core.Render {
                 lock (scheduleLock) {
                     TrackAffectedNotes(noteCmd.Part, noteCmd.Notes);
                 }
-                SchedulePart(noteCmd.Part, settings.DebounceMs);
+                SchedulePart(noteCmd.Part, GetSettings(noteCmd.Part).DebounceMs);
             }
         }
 
@@ -179,7 +190,7 @@ namespace OpenUtau.Core.Render {
             if (cancellationToken.IsCancellationRequested || !IsEnabled) {
                 return;
             }
-            var settings = GetSettings();
+            var settings = GetSettings(part);
             var project = DocManager.Inst.Project;
             if (!project.parts.Contains(part) || GetLivePitchCost(part) == LivePitchCost.Unsupported) {
                 return;
@@ -210,11 +221,15 @@ namespace OpenUtau.Core.Render {
             }
         }
 
-        static LivePitchCost GetLivePitchCost(UVoicePart part) {
+        static IRenderer? GetRenderer(UVoicePart part) {
             if (part == null || part.trackNo < 0 || part.trackNo >= DocManager.Inst.Project.tracks.Count) {
-                return LivePitchCost.Unsupported;
+                return null;
             }
-            var renderer = DocManager.Inst.Project.tracks[part.trackNo].RendererSettings.Renderer;
+            return DocManager.Inst.Project.tracks[part.trackNo].RendererSettings.Renderer;
+        }
+
+        static LivePitchCost GetLivePitchCost(UVoicePart part) {
+            var renderer = GetRenderer(part);
             if (renderer == null || !renderer.SupportsRenderPitch) {
                 return LivePitchCost.Unsupported;
             }

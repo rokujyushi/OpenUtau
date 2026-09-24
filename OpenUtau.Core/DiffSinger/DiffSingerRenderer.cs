@@ -49,6 +49,8 @@ namespace OpenUtau.Core.DiffSinger {
 
         public LivePitchCost LivePitchCost => LivePitchCost.Light;
 
+        public bool SupportsFastLivePitch => true;
+
         public bool IsVoiceColorCurve(string abbr, out int subBankId) {
             subBankId = 0;
             if (abbr.StartsWith(VoiceColorHeader) && int.TryParse(abbr.Substring(2), out subBankId)) {;
