@@ -46,6 +46,7 @@ namespace OpenUtau.Core.DiffSinger {
         public bool SupportsRenderPitch => true;
 
         public bool SupportsRealCurve => true;
+        public bool UsesBarDisplay => true;
 
         public bool IsVoiceColorCurve(string abbr, out int subBankId) {
             subBankId = 0;

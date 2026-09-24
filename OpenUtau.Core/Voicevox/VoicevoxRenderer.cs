@@ -42,6 +42,7 @@ namespace OpenUtau.Core.Voicevox {
         public USingerType SingerType => USingerType.Voicevox;
 
         public bool SupportsRenderPitch => true;
+        public bool UsesBarDisplay => true;
 
         public bool SupportsExpression(UExpressionDescriptor descriptor) {
             return supportedExp.Contains(descriptor.abbr);

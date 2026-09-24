@@ -362,7 +362,7 @@ namespace OpenUtau.App.ViewModels {
             double leftTick = viewModel.TickOffset - 480;
             double rightTick = leftTick + viewModel.ViewportTicks + 480;
             // DiffSinger ignores envelope handles, so skip hit-testing them (position line is still draggable).
-            if (!PhonemeUIRender.IsDiffSinger(viewModel.Part)) {
+            if (!PhonemeUIRender.UsesBarDisplay(viewModel.Part)) {
                 foreach (var phoneme in viewModel.Part.phonemes) {
                     double leftBound = timeAxis.MsPosToTickPos(phoneme.PositionMs - phoneme.preutter) - viewModel.Part.position;
                     double rightBound = phoneme.End;

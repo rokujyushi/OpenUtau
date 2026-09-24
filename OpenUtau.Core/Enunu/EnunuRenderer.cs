@@ -58,6 +58,7 @@ namespace OpenUtau.Core.Enunu {
         public USingerType SingerType => USingerType.Enunu;
 
         public bool SupportsRenderPitch => true;
+        public bool UsesBarDisplay => true;
 
         public bool SupportsExpression(UExpressionDescriptor descriptor) {
             return supportedExp.Contains(descriptor.abbr);
