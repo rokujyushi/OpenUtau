@@ -10,7 +10,7 @@ namespace OpenUtau.App.Controls {
     static class PhonemeUIRender {
         public static bool UsesBarDisplay(UVoicePart part) {
             var track = DocManager.Inst.Project.tracks[part.trackNo];
-            return track.RendererSettings.Renderer.UsesBarDisplay;
+            return track.RendererSettings.Renderer?.UsesBarDisplay ?? false;
         }
 
         public static string getLangCode(UVoicePart part) {
