@@ -3,23 +3,6 @@ using System.Collections.Generic;
 
 namespace OpenUtau.Core.DiffSinger {
     public static class DiffSingerRetake {
-        public static HashSet<int> MapSelectedPositionsToNoteIndexes(
-            int phrasePosition,
-            IReadOnlyList<int> noteRelativePositions,
-            IReadOnlyCollection<int>? selectedAbsolutePositions) {
-            var result = new HashSet<int>();
-            if (selectedAbsolutePositions == null || selectedAbsolutePositions.Count == 0) {
-                return result;
-            }
-            var lookup = selectedAbsolutePositions as ISet<int> ?? new HashSet<int>(selectedAbsolutePositions);
-            for (int i = 0; i < noteRelativePositions.Count; i++) {
-                if (lookup.Contains(phrasePosition + noteRelativePositions[i])) {
-                    result.Add(i);
-                }
-            }
-            return result;
-        }
-
         // paddedToRealNoteIndex must be the same length as paddedNoteDurations.
         // Each entry is the real-note index the padded segment should follow for retake purposes,
         // or -1 for a segment that is never retaken regardless of selection.

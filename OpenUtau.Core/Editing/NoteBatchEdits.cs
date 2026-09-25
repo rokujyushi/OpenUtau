@@ -443,6 +443,12 @@ namespace OpenUtau.Core.Editing {
 
         private string name;
 
+        /// <summary>
+        /// Crossfade length at the edges of a partial write-back for renderers without partial retake,
+        /// so the new pitch joins the pitch kept on neighbouring notes without a step.
+        /// </summary>
+        const double WriteBackFadeMs = 50;
+
         public LoadRenderedPitch() {
             name = "pianoroll.menu.notes.loadrenderedpitch";
         }
@@ -510,10 +516,25 @@ namespace OpenUtau.Core.Editing {
                 }
                 // TODO: Optimize interpolation and command.
                 if (cancellationToken.IsCancellationRequested) break;
+                // Renderers without partial retake regenerate the whole phrase;
+                // write back only the selected notes so other notes' pitch is kept.
+                var retakeMask = result.retakeMask;
+                float[]? fadeWeights = null;
+                if (retakeMask == null) {
+                    retakeMask = Render.PitchRetake.BuildWriteBackMask(
+                        phrase.position, phrase.notes.Select(n => n.position).ToArray(), positions, result.ticks);
+                    if (retakeMask != null) {
+                        var frameMs = result.ticks
+                            .Select(t => phrase.timeAxis.TickPosToMsPos(phrase.position + t))
+                            .ToArray();
+                        fadeWeights = Render.PitchRetake.BuildCrossfadeWeights(
+                            retakeMask, frameMs, result.voiced, WriteBackFadeMs);
+                    }
+                }
                 // Take the first negative tick before start and the first tick after end for each segment;
                 // Reverse traversal, so that when the score slices are too close, priority is given to covering the consonant pitch of the next segment, reducing the impact on vowels.
                 foreach (var (start, end) in Render.PitchRetake.GetRetakeFrameRanges(
-                    result.retakeMask, result.tones.Length)) {
+                    retakeMask, result.tones.Length)) {
                     int? lastX = null;
                     int? lastY = null;
                     for (int i = start; i < end; i++) {
@@ -537,6 +558,10 @@ namespace OpenUtau.Core.Editing {
                         int pitchIndex = Math.Clamp((x - (phrase.position - part.position - phrase.leading)) / 5, 0, phrase.pitches.Length - 1);
                         float basePitch = phrase.pitchesBeforeDeviation[pitchIndex];
                         int y = (int)(result.tones[i] * 100 - basePitch);
+                        if (fadeWeights != null && i < fadeWeights.Length && fadeWeights[i] < 1) {
+                            float existingPitD = phrase.pitches[pitchIndex] - basePitch;
+                            y = (int)(existingPitD + (y - existingPitD) * fadeWeights[i]);
+                        }
                         lastX ??= x;
                         lastY ??= y;
                         if (y > minPitD) {

@@ -560,7 +560,7 @@ namespace OpenUtau.Core.DiffSinger {
             for (int i = 0; i < phrase.notes.Length; i++) {
                 noteRelativePositions[i] = phrase.notes[i].position;
             }
-            var retakeNoteIndexes = DiffSingerRetake.MapSelectedPositionsToNoteIndexes(
+            var retakeNoteIndexes = PitchRetake.MapSelectedPositionsToNoteIndexes(
                 phrase.position, noteRelativePositions, selectedNotePositions);
             if (retakeNoteIndexes.Count == 0 || retakeNoteIndexes.Count == phrase.notes.Length) {
                 lock (singer.SessionLock) {
