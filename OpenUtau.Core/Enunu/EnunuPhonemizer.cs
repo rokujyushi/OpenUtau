@@ -62,6 +62,8 @@ namespace OpenUtau.Core.Enunu {
                     foreach (var ns in notes) {
                         foreach (var n in ns) {
                             writer.Write(n.lyric);
+                            // Lyrics outside the table are sent as rests (NoteGroupsToEnunu).
+                            writer.Write(singer.IsKnownLyric(n.lyric));
                             if(n.phoneticHint!= null) {
                                 writer.Write("["+n.phoneticHint+"]");
                             }
@@ -78,6 +80,7 @@ namespace OpenUtau.Core.Enunu {
         protected virtual EnunuNote[] NoteGroupsToEnunu(Note[][] notes) {
             BaseChinesePhonemizer.RomanizeNotes(notes);
             var result = new List<EnunuNote>();
+            var unknownLyrics = new HashSet<string>();
             int position = 0;
             int index = 0;
             while (index < notes.Length) {
@@ -91,6 +94,11 @@ namespace OpenUtau.Core.Enunu {
                     position = notes[index][0].position;
                 } else {
                     var lyric = notes[index][0].lyric;
+                    // Lyrics outside the table would reach the model as unknown phonemes; sing them as rests.
+                    if (!singer.IsKnownLyric(lyric)) {
+                        unknownLyrics.Add(lyric);
+                        lyric = "R";
+                    }
                     result.Add(new EnunuNote {
                         lyric = lyric,
                         length = notes[index].Sum(n => n.duration),
@@ -100,6 +108,9 @@ namespace OpenUtau.Core.Enunu {
                     position += result.Last().length;
                     index++;
                 }
+            }
+            if (unknownLyrics.Count > 0) {
+                Log.Warning($"ENUNU: lyrics not in the table of {singer.Name} are sung as rests: {string.Join(", ", unknownLyrics)}");
             }
             return result.ToArray();
         }
