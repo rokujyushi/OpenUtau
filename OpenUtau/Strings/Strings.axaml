@@ -674,6 +674,15 @@ Warning: this option removes custom presets.</system:String>
   <system:String x:Key="prefs.channel.stable">Stable</system:String>
   <system:String x:Key="prefs.diffsinger">DiffSinger</system:String>
   <system:String x:Key="prefs.editing">Editing</system:String>
+  <system:String x:Key="prefs.enunu">ENUNU</system:String>
+  <system:String x:Key="prefs.enunu.diffusion">Diffusion Sampling</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.bap">Steps: Aperiodicity (bap, WORLD models)</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.mel">Steps: Mel Spectrogram (mel, melf0 models)</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.mgc">Steps: Spectrum (mgc, WORLD models)</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.model">Model Settings (every step, slower)</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.note">Requires ENUNUServer 2. The steps apply to the recommended sampling only.</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.recommended">Recommended (faster)</system:String>
+  <system:String x:Key="prefs.enunu.diffusion.recommendedsteps">Recommended</system:String>
   <system:String x:Key="prefs.general">General</system:String>
   <system:String x:Key="prefs.note.restart">Note: please restart OpenUtau after changing this item.</system:String>
   <system:String x:Key="prefs.otoeditor">Oto Editor</system:String>

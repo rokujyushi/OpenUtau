@@ -30,6 +30,32 @@ namespace OpenUtau.Core {
         }
 
         [Fact]
+        public void DiffusionConfigRequestMatchesTheServerFormat() {
+            // Recommended: starts from the server's defaults and sends only the streams set in the preferences.
+            Assert.Equal("[\"config\",{\"diffusion\":{\"reset\":true}}]",
+                Json.Serialize(EnunuConnection.DiffusionConfigRequest(new EnunuDiffusionPreferences(0, 0, 0, 0))));
+            Assert.Equal("[\"config\",{\"diffusion\":{\"reset\":true,\"mgc\":{\"steps\":10},\"bap\":{\"steps\":30}}}]",
+                Json.Serialize(EnunuConnection.DiffusionConfigRequest(new EnunuDiffusionPreferences(0, 10, 30, 0))));
+            // Model settings: every step, whatever the per-stream steps are.
+            Assert.Equal("[\"config\",{\"diffusion\":{\"reset\":true,\"mgc\":\"ddpm\",\"mel\":\"ddpm\",\"bap\":\"ddpm\"}}]",
+                Json.Serialize(EnunuConnection.DiffusionConfigRequest(new EnunuDiffusionPreferences(1, 10, 0, 0))));
+        }
+
+        [Fact]
+        public void DiffusionCacheKeyKeepsDefaultPathsAndSeparatesSettings() {
+            Assert.Equal(0UL, new EnunuDiffusionPreferences(0, 0, 0, 0).CacheKey);
+            var keys = new[] {
+                new EnunuDiffusionPreferences(0, 10, 0, 0).CacheKey,
+                new EnunuDiffusionPreferences(0, 0, 10, 0).CacheKey,
+                new EnunuDiffusionPreferences(1, 0, 0, 0).CacheKey,
+            };
+            Assert.Equal(keys.Length, keys.Distinct().Count());
+            Assert.DoesNotContain(0UL, keys);
+            // The steps do not matter when following the model.
+            Assert.Equal(new EnunuDiffusionPreferences(1, 0, 0, 0).CacheKey, new EnunuDiffusionPreferences(1, 50, 5, 5).CacheKey);
+        }
+
+        [Fact]
         public void ReadsFeaturesOnlyFromNewServers() {
             var legacy = Json.Deserialize<VersionResponse>(
                 "{\"result\": {\"name\": \"SimpleENUNUServer\", \"version\": \"0.5.0\", \"author\": \"x\"}}");

@@ -28,6 +28,17 @@ namespace OpenUtau.App.ViewModels {
         }
     }
 
+    public class EnunuStepsOption {
+        public readonly int steps;
+        public EnunuStepsOption(int steps) {
+            this.steps = steps;
+        }
+        // 0 leaves the stream at the server's recommended value.
+        public override string ToString() {
+            return steps == 0 ? ThemeManager.GetString("prefs.enunu.diffusion.recommendedsteps") : steps.ToString();
+        }
+    }
+
     public partial class PreferencesViewModel : ViewModelBase {
         // General
         private CultureInfo? language;
@@ -139,6 +150,20 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial bool DiffSingerVarianceLocalPitchPatch { get; set; }
         [Reactive] public partial bool DiffSingerLangCodeHide { get; set; }
 
+        // ENUNU
+        public List<EnunuStepsOption> EnunuDiffusionStepsOptions { get; } =
+            new[] { 0, 5, 10, 15, 20, 25, 30, 50, 100 }.Select(steps => new EnunuStepsOption(steps)).ToList();
+        // 0: recommended (faster), 1: the models' own settings (every step).
+        [Reactive] public partial int EnunuDiffusionMode { get; set; }
+        [Reactive] public partial EnunuStepsOption EnunuDiffusionStepsMgc { get; set; }
+        [Reactive] public partial EnunuStepsOption EnunuDiffusionStepsBap { get; set; }
+        [Reactive] public partial EnunuStepsOption EnunuDiffusionStepsMel { get; set; }
+        [Reactive] public partial bool EnunuDiffusionStepsEnabled { get; set; }
+
+        EnunuStepsOption FindEnunuStepsOption(int steps) {
+            return EnunuDiffusionStepsOptions.FirstOrDefault(o => o.steps == steps) ?? EnunuDiffusionStepsOptions[0];
+        }
+
         // Advanced
         [Reactive] public partial bool RememberMid { get; set; }
         [Reactive] public partial bool RememberUst { get; set; }
@@ -221,6 +246,11 @@ namespace OpenUtau.App.ViewModels {
             DiffSingerTensorCache = Preferences.Default.DiffSingerTensorCache;
             DiffSingerVarianceLocalPitchPatch = Preferences.Default.DiffSingerVarianceLocalPitchPatch;
             DiffSingerLangCodeHide = Preferences.Default.DiffSingerLangCodeHide;
+            EnunuDiffusionMode = Preferences.Default.EnunuDiffusionMode;
+            EnunuDiffusionStepsEnabled = EnunuDiffusionMode == 0;
+            EnunuDiffusionStepsMgc = FindEnunuStepsOption(Preferences.Default.EnunuDiffusionStepsMgc);
+            EnunuDiffusionStepsBap = FindEnunuStepsOption(Preferences.Default.EnunuDiffusionStepsBap);
+            EnunuDiffusionStepsMel = FindEnunuStepsOption(Preferences.Default.EnunuDiffusionStepsMel);
             SkipRenderingMutedTracks = Preferences.Default.SkipRenderingMutedTracks;
             ThemeName = Preferences.Default.ThemeName;
             DegreeStyle = Preferences.Default.DegreeStyle;
@@ -445,6 +475,17 @@ namespace OpenUtau.App.ViewModels {
                 value => Preferences.Default.DiffSingerVarianceLocalPitchPatch = value);
             PersistOn(this.WhenAnyValue(vm => vm.DiffSingerLangCodeHide),
                 value => Preferences.Default.DiffSingerLangCodeHide = value);
+            PersistOn(this.WhenAnyValue(vm => vm.EnunuDiffusionMode),
+                value => Preferences.Default.EnunuDiffusionMode = value);
+            // The per-stream steps only apply to the recommended mode.
+            this.WhenAnyValue(vm => vm.EnunuDiffusionMode)
+                .Subscribe(mode => EnunuDiffusionStepsEnabled = mode == 0);
+            PersistOn(this.WhenAnyValue(vm => vm.EnunuDiffusionStepsMgc),
+                value => Preferences.Default.EnunuDiffusionStepsMgc = value.steps);
+            PersistOn(this.WhenAnyValue(vm => vm.EnunuDiffusionStepsBap),
+                value => Preferences.Default.EnunuDiffusionStepsBap = value.steps);
+            PersistOn(this.WhenAnyValue(vm => vm.EnunuDiffusionStepsMel),
+                value => Preferences.Default.EnunuDiffusionStepsMel = value.steps);
             PersistOn(this.WhenAnyValue(vm => vm.SkipRenderingMutedTracks),
                 skipRenderingMutedTracks => Preferences.Default.SkipRenderingMutedTracks = skipRenderingMutedTracks);
         }

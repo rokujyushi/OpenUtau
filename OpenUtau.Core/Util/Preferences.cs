@@ -193,6 +193,15 @@ namespace OpenUtau.Core.Util {
             public int DiffSingerStepsPitch = 10;
             public bool DiffSingerTensorCache = true;
             public bool DiffSingerVarianceLocalPitchPatch = false;
+            /// <summary>
+            /// ENUNUServer diffusion sampling. 0: the server's recommended faster sampling, with the steps below.
+            /// 1: the models' own settings (every step, slower).
+            /// </summary>
+            public int EnunuDiffusionMode = 0;
+            /// <summary>Diffusion steps per stream in the recommended mode. 0 uses the server's recommended value.</summary>
+            public int EnunuDiffusionStepsMgc = 0;
+            public int EnunuDiffusionStepsBap = 0;
+            public int EnunuDiffusionStepsMel = 0;
             public bool DiffSingerLangCodeHide = false;
             /// <summary>
             /// Auto-merge nearby DiffSinger phrases (piano roll toggle). Off by

@@ -71,6 +71,39 @@ namespace OpenUtau.Core.Enunu {
         public readonly string? Error => error;
     }
 
+    struct ConfigResult {
+        public Dictionary<string, EnunuDiffusionSetting>? diffusion;
+    }
+
+    struct ConfigResponse : IEnunuResponse {
+        public string? error;
+        public ConfigResult result;
+        public readonly string? Error => error;
+    }
+
+    /// <summary>
+    /// Diffusion sampling chosen in the preferences.
+    /// Mode 0 uses the server's recommended faster sampling, with per-stream steps where not 0;
+    /// mode 1 follows the models' own setting (every step).
+    /// </summary>
+    record EnunuDiffusionPreferences(int Mode, int Mgc, int Bap, int Mel) {
+        public static EnunuDiffusionPreferences Current => new EnunuDiffusionPreferences(
+            Preferences.Default.EnunuDiffusionMode,
+            Preferences.Default.EnunuDiffusionStepsMgc,
+            Preferences.Default.EnunuDiffusionStepsBap,
+            Preferences.Default.EnunuDiffusionStepsMel);
+
+        public bool FollowsModel => Mode == 1;
+
+        /// <summary>
+        /// Part of the wav cache key, since the wav changes with these settings.
+        /// Stable across sessions; 0 for the defaults so their wav paths stay as before.
+        /// </summary>
+        public ulong CacheKey => FollowsModel || Mgc > 0 || Bap > 0 || Mel > 0
+            ? K4os.Hash.xxHash.XXH64.DigestOf(System.Text.Encoding.UTF8.GetBytes(FollowsModel ? "model" : $"{Mgc}:{Bap}:{Mel}"))
+            : 0;
+    }
+
     /// <summary>
     /// Talks to the ENUNU server. Holds only what belongs to the server (port and features);
     /// everything about a phrase is passed in as arguments, so one instance serves all tracks and threads.
@@ -117,6 +150,7 @@ namespace OpenUtau.Core.Enunu {
         }
 
         public AcousticResponse Acoustic(string ustPath, string voicebankNameHash) {
+            SendDiffusionConfig();
             return Request<AcousticResponse>(CommandRequest(EnunuCommand.Acoustic, ustPath, "", voicebankNameHash));
         }
 
@@ -128,6 +162,7 @@ namespace OpenUtau.Core.Enunu {
 
         /// <param name="editorF0">Hz per frame. Frames with 0 use the model's own pitch.</param>
         public AcousticResponse AcousticF0(string ustPath, string voicebankNameHash, double[] editorF0) {
+            SendDiffusionConfig();
             var response = Request<AcousticResponse>(CommandRequest(EnunuCommand.AcousticF0, ustPath, "", voicebankNameHash, editorF0));
             if (response.result.lf0_conditioning is bool value) {
                 lf0Conditioning[voicebankNameHash] = value;
@@ -136,7 +171,25 @@ namespace OpenUtau.Core.Enunu {
         }
 
         public SyntheResponse Synthe(string ustPath, string wavPath, string voicebankNameHash) {
+            SendDiffusionConfig();
             return Request<SyntheResponse>(CommandRequest(EnunuCommand.Synthe, ustPath, wavPath, voicebankNameHash));
+        }
+
+        /// <summary>
+        /// Sends the diffusion steps from the preferences. Sent before every acoustic request instead of once:
+        /// the server accepts commands without ver_check, so we cannot tell when it has restarted
+        /// and gone back to its defaults. Sending the same values again keeps the server's caches valid.
+        /// Failure is only logged; synthesis goes on with the server's current settings.
+        /// </summary>
+        void SendDiffusionConfig() {
+            if (GetFeatures()?.Has(EnunuCommand.Config) != true) {
+                return;
+            }
+            try {
+                Request<ConfigResponse>(DiffusionConfigRequest(EnunuDiffusionPreferences.Current));
+            } catch (Exception e) {
+                Log.Warning(e, "Failed to send the diffusion settings to the ENUNU server.");
+            }
         }
 
         /// <summary>
@@ -147,6 +200,27 @@ namespace OpenUtau.Core.Enunu {
             var request = new List<object> { command, ustPath, wavPath, voicebankNameHash, EngineLifetimeSec, StyleShift };
             request.AddRange(extra);
             return request.ToArray();
+        }
+
+        /// <summary>
+        /// Always starts from the server's defaults (reset) and sends the whole setting,
+        /// so nothing sent earlier is left over.
+        /// </summary>
+        internal static object[] DiffusionConfigRequest(EnunuDiffusionPreferences preferences) {
+            var diffusion = new Dictionary<string, object> { ["reset"] = true };
+            if (preferences.FollowsModel) {
+                // The models' own setting: nnsvs runs every step (DDPM).
+                diffusion["mgc"] = "ddpm";
+                diffusion["mel"] = "ddpm";
+                diffusion["bap"] = "ddpm";
+            } else {
+                foreach (var (stream, steps) in new[] { ("mgc", preferences.Mgc), ("mel", preferences.Mel), ("bap", preferences.Bap) }) {
+                    if (steps > 0) {
+                        diffusion[stream] = new { steps };
+                    }
+                }
+            }
+            return new object[] { EnunuCommand.Config, new { diffusion } };
         }
 
         T Request<T>(object[] request) where T : IEnunuResponse {

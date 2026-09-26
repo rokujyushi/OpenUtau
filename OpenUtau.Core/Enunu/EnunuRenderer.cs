@@ -37,7 +37,7 @@ namespace OpenUtau.Core.Enunu {
 
         /// <summary>
         /// Files of one phrase. The UST and the server's work folder are named from the phrase content
-        /// without pitch, so pitch edits reuse them; the wav also depends on pitch.
+        /// without pitch, so pitch edits reuse them; the wav also depends on pitch and diffusion steps.
         /// </summary>
         record EnunuPaths(string TmpPath, string WavPath, string VoicebankNameHash) {
             public string UstPath => TmpPath + ".tmp";
@@ -93,7 +93,7 @@ namespace OpenUtau.Core.Enunu {
                     string progressInfo = $"Track {trackNo + 1}: {this} \"{string.Join(" ", phrase.phones.Select(p => p.phoneme))}\"";
                     progress.Complete(0, progressInfo);
                     var features = EnunuConnection.Inst.GetFeatures();
-                    var paths = PreparePaths(phrase);
+                    var paths = PreparePaths(phrase, features);
                     phrase.AddCacheFile(paths.TmpPath);
                     phrase.AddCacheFile(paths.WavPath);
                     // The server keeps features.npz and pitch_f0.npy here; without deleting it, clearing the cache would not re-infer.
@@ -192,10 +192,14 @@ namespace OpenUtau.Core.Enunu {
             }
         }
 
-        EnunuPaths PreparePaths(RenderPhrase phrase) {
+        EnunuPaths PreparePaths(RenderPhrase phrase, EnunuServerFeatures? features) {
             ulong hash = HashPhraseGroups(phrase);
             var tmpPath = Path.Join(PathManager.Inst.CachePath, $"enu-{hash:x16}");
             ulong wavHash = phrase.hash + hash;
+            if (features?.diffusion != null) {
+                // Servers with diffusion settings: the wav changes with the sampling settings.
+                wavHash += EnunuDiffusionPreferences.Current.CacheKey;
+            }
             var wavPath = Path.Join(PathManager.Inst.CachePath, $"enu-{wavHash:x16}.wav");
             var voicebankNameHash = $"{(phrase.singer as EnunuSinger)!.voicebankNameHash:x16}";
             return new EnunuPaths(tmpPath, wavPath, voicebankNameHash);
@@ -245,7 +249,7 @@ namespace OpenUtau.Core.Enunu {
         public RenderPitchResult LoadRenderedPitch(RenderPhrase phrase) {
             lock (lockObj) {
                 var features = EnunuConnection.Inst.GetFeatures();
-                var paths = PreparePaths(phrase);
+                var paths = PreparePaths(phrase, features);
                 var config = EnunuConfig.Load(phrase.singer);
                 string f0Path = paths.F0Path;
                 if (features?.SupportsPitch == true) {

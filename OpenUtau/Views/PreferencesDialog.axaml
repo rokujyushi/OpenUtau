@@ -57,6 +57,7 @@
       <ListBoxItem Content="{DynamicResource prefs.appearance}"/>
       <ListBoxItem Content="{DynamicResource prefs.utau}"/>
       <ListBoxItem Content="{DynamicResource prefs.diffsinger}"/>
+      <ListBoxItem Content="{DynamicResource prefs.enunu}"/>
       <ListBoxItem Content="{DynamicResource prefs.advanced}"/>
     </ListBox>
     <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Visible">
@@ -391,6 +392,25 @@
             <TextBlock Text="{DynamicResource prefs.appearance.diffsingerlangcodehide}" HorizontalAlignment="Left" />
             <ToggleSwitch IsChecked="{Binding DiffSingerLangCodeHide}" />
           </Grid>
+        </StackPanel>
+
+        <!-- ENUNU -->
+        <StackPanel>
+          <TextBlock Text="{DynamicResource prefs.enunu.diffusion}" Margin="0,10,0,0"/>
+          <ComboBox HorizontalAlignment="Stretch" SelectedIndex="{Binding EnunuDiffusionMode}">
+            <ComboBoxItem Content="{DynamicResource prefs.enunu.diffusion.recommended}"/>
+            <ComboBoxItem Content="{DynamicResource prefs.enunu.diffusion.model}"/>
+          </ComboBox>
+          <TextBlock Text="{DynamicResource prefs.enunu.diffusion.mgc}" Margin="0,10,0,0"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding EnunuDiffusionStepsOptions}"
+                    SelectedItem="{Binding EnunuDiffusionStepsMgc}" IsEnabled="{Binding EnunuDiffusionStepsEnabled}"/>
+          <TextBlock Text="{DynamicResource prefs.enunu.diffusion.bap}" Margin="0,10,0,0"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding EnunuDiffusionStepsOptions}"
+                    SelectedItem="{Binding EnunuDiffusionStepsBap}" IsEnabled="{Binding EnunuDiffusionStepsEnabled}"/>
+          <TextBlock Text="{DynamicResource prefs.enunu.diffusion.mel}" Margin="0,10,0,0"/>
+          <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding EnunuDiffusionStepsOptions}"
+                    SelectedItem="{Binding EnunuDiffusionStepsMel}" IsEnabled="{Binding EnunuDiffusionStepsEnabled}"/>
+          <TextBlock Text="{DynamicResource prefs.enunu.diffusion.note}" TextWrapping="Wrap" FontSize="11" Margin="4"/>
         </StackPanel>
 
         <!-- Advanced -->
