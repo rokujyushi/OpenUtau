@@ -9,9 +9,7 @@ using NAudio.Wave;
 using NumSharp;
 using OpenUtau.Core.Format;
 using OpenUtau.Core.Render;
-using OpenUtau.Core.SignalChain;
 using OpenUtau.Core.Ustx;
-using OpenUtau.Core.Util;
 using Serilog;
 
 namespace OpenUtau.Core.Enunu {
