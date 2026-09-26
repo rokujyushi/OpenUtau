@@ -96,6 +96,8 @@ namespace OpenUtau.Core.Enunu {
                     var paths = PreparePaths(phrase);
                     phrase.AddCacheFile(paths.TmpPath);
                     phrase.AddCacheFile(paths.WavPath);
+                    // The server keeps features.npz and pitch_f0.npy here; without deleting it, clearing the cache would not re-infer.
+                    phrase.AddCacheDirectory(paths.EnutmpPath);
                     var config = EnunuConfig.Load(phrase.singer);
                     var result = Layout(phrase);
                     if (!File.Exists(paths.WavPath)) {

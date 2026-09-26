@@ -205,6 +205,7 @@ namespace OpenUtau.Core.Render {
         public readonly PhraseLayout Layout;
 
         private List<string> cacheFiles = new List<string>();
+        private List<string> cacheDirectories = new List<string>();
 
         /// <summary>
         /// The heavy phrase build over an immutable snapshot; pure over the
@@ -586,6 +587,16 @@ namespace OpenUtau.Core.Render {
             }
         }
 
+        /// <summary>
+        /// Registers a directory to delete with the cache files, such as a renderer's work folder.
+        /// </summary>
+        public void AddCacheDirectory(string directory) {
+            if (string.IsNullOrWhiteSpace(directory)) return;
+            if (!cacheDirectories.Contains(directory)) {
+                cacheDirectories.Add(directory);
+            }
+        }
+
         public void DeleteCacheFiles() {
             foreach (var filename in cacheFiles) {
                 var files = Directory.EnumerateFiles(PathManager.Inst.CachePath, $"{filename}*");
@@ -598,6 +609,16 @@ namespace OpenUtau.Core.Render {
                 }
             }
             cacheFiles.Clear();
+            foreach (var directory in cacheDirectories) {
+                try {
+                    if (Directory.Exists(directory)) {
+                        Directory.Delete(directory, true);
+                    }
+                } catch (Exception e) {
+                    Log.Error(e, $"Failed to delete directory {directory}");
+                }
+            }
+            cacheDirectories.Clear();
 
             if (singer is ClassicSinger cSinger && cSinger.Frqs != null) {
                 foreach (var oto in phones.Select(p => p.oto).Distinct()) {
