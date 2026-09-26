@@ -171,7 +171,7 @@ namespace OpenUtau.Core.Enunu {
         }
 
         /// <summary>
-        /// ENUNUServer 1.0: pitch → acoustic_f0, so the voice follows the editor pitch.
+        /// ENUNUServer 2: pitch → acoustic_f0, so the voice follows the editor pitch.
         /// Models without an lf0_model ignore the editor pitch in acoustic_f0 but would still miss the
         /// server's cache on every pitch edit, so they use plain acoustic and get the pitch in synthe.
         /// </summary>

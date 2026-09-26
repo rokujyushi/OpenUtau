@@ -127,7 +127,7 @@ namespace OpenUtau.Core.Enunu {
 
         /// <summary>
         /// Features found by the last ver_check. Does not contact the server:
-        /// null before the first request and for servers older than ENUNUServer 1.0.
+        /// null before the first request and for servers older than ENUNUServer 2.
         /// </summary>
         public EnunuServerFeatures? Features => features;
 

@@ -9,7 +9,7 @@ namespace OpenUtau.Core.Enunu {
         public string name;
         public string version;
         public string author;
-        /// <summary>Added by ENUNUServer 1.0. Null on older servers.</summary>
+        /// <summary>Added by ENUNUServer 2. Null on older servers.</summary>
         public EnunuServerFeatures? features;
     }
 
