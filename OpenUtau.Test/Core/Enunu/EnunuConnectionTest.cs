@@ -21,6 +21,21 @@ namespace OpenUtau.Core {
         }
 
         [Fact]
+        public void SilencesHeadAndTailRests() {
+            // 100 ms head rest, 200 ms phrase, 100 ms tail rest at 44100 Hz.
+            var samples = Enumerable.Repeat(1f, 17640).ToArray();
+            EnunuRenderer.SilenceHeadAndTail(samples, 100, 200);
+            Assert.Equal(0f, samples[0]);
+            Assert.Equal(0f, samples[3528]);             // 80 ms: before the 20 ms fade-in
+            Assert.InRange(samples[3969], 0.4f, 0.6f);   // 90 ms: halfway through the fade-in
+            Assert.Equal(1f, samples[4410]);             // 100 ms: the first phoneme starts
+            Assert.Equal(1f, samples[13229]);            // just before the last phoneme ends
+            Assert.InRange(samples[13892], 0.4f, 0.6f);  // 315 ms: halfway through the 30 ms fade-out
+            Assert.Equal(0f, samples[14553]);            // 330 ms: after the fade-out
+            Assert.Equal(0f, samples[^1]);
+        }
+
+        [Fact]
         public void CommandRequestsMatchTheServerFormat() {
             // ENUNUServer 2: style shift at [5] is required; acoustic_f0 carries the f0 at [6] as numbers.
             Assert.Equal("[\"acoustic\",\"a.tmp\",\"\",\"hash\",\"600\",0]",
