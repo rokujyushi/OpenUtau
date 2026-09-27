@@ -114,6 +114,7 @@ namespace OpenUtau.Core.Enunu {
                             result.samples = Wave.GetSamples(waveStream.ToSampleProvider().ToMono(1, 0));
                         }
                         if (result.samples != null) {
+                            SilenceHeadAndTail(result.samples, result.leadingMs, phrase.durationMs);
                             Renderers.ApplyDynamics(phrase, result);
                         }
                     } else {
@@ -123,6 +124,30 @@ namespace OpenUtau.Core.Enunu {
                 }
             });
             return task;
+        }
+
+        /// <summary>
+        /// Silences the head and tail rests that PhraseToEnunuNotes adds around the phrase: some voicebanks
+        /// breathe in them. The fade-in ends where the first phoneme starts, so its consonant stays whole;
+        /// the fade-out starts at the end of the last phoneme, leaving its release a little room.
+        /// </summary>
+        /// <param name="samples">44100 Hz, starting at the head rest.</param>
+        /// <param name="headMs">Length of the head rest.</param>
+        /// <param name="durationMs">Length of the phrase from its first phoneme to the end of its last.</param>
+        internal static void SilenceHeadAndTail(float[] samples, double headMs, double durationMs) {
+            const double samplesPerMs = 44100 / 1000.0;
+            const double headFadeMs = 20;
+            const double tailFadeMs = 30;
+            int start = (int)Math.Round(headMs * samplesPerMs);
+            int fadeIn = (int)Math.Round(headFadeMs * samplesPerMs);
+            for (int i = 0; i < Math.Min(start, samples.Length); i++) {
+                samples[i] *= (float)Math.Clamp((i - (start - fadeIn)) / (double)fadeIn, 0, 1);
+            }
+            int end = (int)Math.Round((headMs + durationMs) * samplesPerMs);
+            int fadeOut = (int)Math.Round(tailFadeMs * samplesPerMs);
+            for (int i = Math.Max(end, 0); i < samples.Length; i++) {
+                samples[i] *= (float)Math.Clamp(1 - (i - end) / (double)fadeOut, 0, 1);
+            }
         }
 
         /// <summary>
