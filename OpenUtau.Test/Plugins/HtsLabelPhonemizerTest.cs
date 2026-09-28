@@ -186,7 +186,6 @@ namespace OpenUtau.Plugins {
             timeAxis.BuildSegments(project);
 
             var phonemizer = new DummyHtsLabelPhonemizer();
-            phonemizer.Testing = true;
             phonemizer.SetSinger(singer);
             phonemizer.SetTiming(timeAxis);
             phonemizer.SetUp(BuildGroups(lyrics), project, track);
