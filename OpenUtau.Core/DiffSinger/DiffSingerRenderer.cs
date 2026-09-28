@@ -47,6 +47,8 @@ namespace OpenUtau.Core.DiffSinger {
 
         public bool SupportsRealCurve => true;
 
+        public bool SupportsPhonemeEnvelope => false;
+
         public LivePitchCost LivePitchCost => LivePitchCost.Light;
 
         public bool SupportsFastLivePitch => true;
@@ -90,6 +92,15 @@ namespace OpenUtau.Core.DiffSinger {
             }
             double frameMs = dsSinger.dsConfig.frameMs();
             return (DiffSingerUtils.GetHeadMs(frameMs), DiffSingerUtils.GetTailMs(frameMs));
+        }
+
+        /// <summary>
+        /// Merging is opt-in (piano roll toggle): it changes how the model sees
+        /// a passage, so it stays off unless the user enables it.
+        /// </summary>
+        public bool ShouldMergePhrases(UProject project, UTrack track, UPhoneme prev, UPhoneme next) {
+            return Preferences.Default.DiffSingerMergeNearbyPhrases
+                && IRenderer.GapOverlapsPadding(this, track, prev, next);
         }
 
         public Task<RenderResult> Render(RenderPhrase phrase, Progress progress, int trackNo, CancellationTokenSource cancellation, bool isPreRender, RenderPhraseEvents? renderEvents = null) {

@@ -43,6 +43,8 @@ namespace OpenUtau.Core.Voicevox {
 
         public bool SupportsRenderPitch => true;
 
+        public bool SupportsPhonemeEnvelope => false;
+
         public LivePitchCost LivePitchCost => LivePitchCost.Light;
 
         public bool SupportsExpression(UExpressionDescriptor descriptor) {

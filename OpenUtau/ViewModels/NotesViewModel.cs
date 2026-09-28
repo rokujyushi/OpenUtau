@@ -62,6 +62,8 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial bool ShowFinalPitch { get; set; }
         [Reactive] public partial bool LivePitchNormal { get; set; }
         [Reactive] public partial bool LivePitchFast { get; set; }
+        [Reactive] public partial bool MergeNearbyPhrases { get; set; }
+        [Reactive] public partial bool IsDiffSinger { get; set; }
         [Reactive] public partial bool SupportsLivePitch { get; set; }
         [Reactive] public partial bool SupportsFastLivePitch { get; set; }
         bool livePitchSyncing;
@@ -255,6 +257,22 @@ namespace OpenUtau.App.ViewModels {
                     } else if (Preferences.Default.RealTimePitchMode == (int)LivePitchMode.Fast) {
                         SetLivePitchMode(LivePitchMode.Off);
                     }
+                });
+            MergeNearbyPhrases = Preferences.Default.DiffSingerMergeNearbyPhrases;
+            this.WhenAnyValue(x => x.MergeNearbyPhrases)
+                .Subscribe(merge => {
+                    // The reactive idiom echoes the initial value on subscribe;
+                    // skip it so startup does not re-validate the project.
+                    if (Preferences.Default.DiffSingerMergeNearbyPhrases == merge) {
+                        return;
+                    }
+                    Preferences.Default.DiffSingerMergeNearbyPhrases = merge;
+                    Preferences.Save();
+                    // Phrase grouping is baked in at validate time, so re-validate
+                    // to re-group every DiffSinger part, then let the background
+                    // (pre-)render pick up the new phrase hashes.
+                    DocManager.Inst.ExecuteCmd(new ValidateProjectNotification());
+                    DocManager.Inst.ExecuteCmd(new PreRenderNotification());
                 });
             ShowVibrato = Preferences.Default.ShowVibrato;
             this.WhenAnyValue(x => x.ShowVibrato)
@@ -629,17 +647,19 @@ namespace OpenUtau.App.ViewModels {
                 return;
             }
             TickOrigin = Part.position;
-            UpdateSupportsLivePitch();
+            UpdateRendererFlags();
             Notify();
         }
 
-        void UpdateSupportsLivePitch() {
+        void UpdateRendererFlags() {
             if (Project == null || Part == null || Part.trackNo < 0 || Part.trackNo >= Project.tracks.Count) {
+                IsDiffSinger = false;
                 SupportsLivePitch = false;
                 SupportsFastLivePitch = false;
                 return;
             }
             var renderer = Project.tracks[Part.trackNo].RendererSettings.Renderer;
+            IsDiffSinger = renderer != null && renderer.SingerType == USingerType.DiffSinger;
             SupportsLivePitch = renderer != null
                 && renderer.SupportsRenderPitch
                 && renderer.LivePitchCost != Core.Render.LivePitchCost.Unsupported;
@@ -1160,7 +1180,9 @@ namespace OpenUtau.App.ViewModels {
                 return true;
             }
             if (track.TryGetExpDescriptor(Project, expKey, out var descriptor)) {
-                return track.RendererSettings.Renderer.SupportsExpression(descriptor);
+                // Masked curves are for expression graphs, which read them whatever the renderer.
+                return descriptor.type == UExpressionType.MaskedCurve
+                    || track.RendererSettings.Renderer.SupportsExpression(descriptor);
             }
             if (expKey == track.VoiceColorExp.abbr) {
                 return track.RendererSettings.Renderer.SupportsExpression(track.VoiceColorExp);
@@ -1271,7 +1293,7 @@ namespace OpenUtau.App.ViewModels {
                         LoadPortrait(Part, Project);
                     }
                 }
-                UpdateSupportsLivePitch();
+                UpdateRendererFlags();
                 PrimaryKeyNotSupported = !IsExpSupported(PrimaryKey);
             }
         }

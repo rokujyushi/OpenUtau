@@ -59,6 +59,8 @@ namespace OpenUtau.Core.Enunu {
 
         public bool SupportsRenderPitch => true;
 
+        public bool SupportsPhonemeEnvelope => false;
+
         public LivePitchCost LivePitchCost => LivePitchCost.Heavy;
 
         public bool SupportsExpression(UExpressionDescriptor descriptor) {
