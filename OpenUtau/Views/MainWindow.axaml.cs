@@ -63,12 +63,13 @@ namespace OpenUtau.App.Views {
 
         public MainWindow() {
             Log.Information("Creating main window.");
-            InitializeComponent();
-            Log.Information("Initialized main window component.");
+            // Set before InitializeComponent, so bindings to the window's view model resolve on first evaluation.
             DataContext = viewModel = new MainWindowViewModel {
                 // give the viewmodel a way to prompt/save using the view's existing method
                 AskIfSaveAndContinue = AskIfSaveAndContinue
             };
+            InitializeComponent();
+            Log.Information("Initialized main window component.");
 
             viewModel.AddTempoChangeCmd = ReactiveCommand.Create<int>(tick => AddTempoChange(tick));
             viewModel.DelTempoChangeCmd = ReactiveCommand.Create<int>(tick => DelTempoChange(tick));
@@ -585,13 +586,7 @@ namespace OpenUtau.App.Views {
         void OnMenuRedo(object sender, RoutedEventArgs args) => viewModel.Redo();
 
         void OnMenuExpressionss(object sender, RoutedEventArgs args) {
-            var dialog = new ExpressionsDialog() {
-                DataContext = new ExpressionsViewModel(),
-            };
-            dialog.ShowDialog(this);
-            if (dialog.Position.Y < 0) {
-                dialog.Position = dialog.Position.WithY(0);
-            }
+            ExpressionsDialog.Open(this);
         }
 
         async void OnMenuSingers(object sender, RoutedEventArgs args) {
@@ -1360,6 +1355,14 @@ namespace OpenUtau.App.Views {
                     Cursor = null;
                 }
             } else {
+                Cursor = null;
+            }
+        }
+
+        public void PartsCanvasPointerExited(object sender, PointerEventArgs args) {
+            // The hover cursor is set on the window; reset it when leaving the canvas from a part edge,
+            // otherwise it stays visible wherever nothing overrides it (e.g. around open popups).
+            if (partEditState == null) {
                 Cursor = null;
             }
         }
