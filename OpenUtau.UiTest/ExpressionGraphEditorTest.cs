@@ -63,7 +63,7 @@ namespace OpenUtau.UiTest {
                 // A "power" graph for the track's renderer: dyn mapped to gender, not linked yet.
                 ExpressionGraphEdits.Apply(project, draft => {
                     draft.Graphs.Add(new UExpressionGraph { id = "power", name = "Power", renderer = Renderers.WORLDLINE_R2 });
-                    draft.Defaults[Renderers.WORLDLINE_R2] = "power";
+                    draft.Defaults[Renderers.WORLDLINE_R] = "power";  // the Worldline-R slot
                     var graph = draft.Find("power")!;
                     ExpressionGraphEdits.AddNode(graph, GraphNodeTypes.CurveInput, 20, 40).Set("abbr", "dyn");
                     var map = ExpressionGraphEdits.AddNode(graph, GraphNodeTypes.MapRange, 260, 40);
@@ -174,7 +174,8 @@ namespace OpenUtau.UiTest {
                 draft.Graphs.Add(new UExpressionGraph { id = "a", name = "Graph A", renderer = Renderers.WORLDLINE_R2 });
                 draft.Graphs.Add(new UExpressionGraph { id = "b", name = "Graph B", renderer = Renderers.WORLDLINE_R2 });
                 draft.Graphs.Add(new UExpressionGraph { id = "c", name = "Graph C", renderer = Renderers.DIFFSINGER });
-                draft.Defaults[Renderers.WORLDLINE_R2] = "a";
+                // Defaults are per slot: the Worldline-R variants share Worldline-R's.
+                draft.Defaults[Renderers.WORLDLINE_R] = "a";
             });
             var track = project.tracks[0];
             track.RendererSettings.renderer = Renderers.WORLDLINE_R2;
