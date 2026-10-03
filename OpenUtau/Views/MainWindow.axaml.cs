@@ -1264,6 +1264,10 @@ namespace OpenUtau.App.Views {
                         partEditState = new PartMoveEditState(control, viewModel, part);
                         Cursor = ViewConstants.cursorSizeAll;
                     }
+                } else if (pianoRoll != null &&
+                    hitPartControl.HitPianoRollViewportHandle(point.Position - hitPartControl.Bounds.Position)) {
+                    partEditState = new PianoRollViewportDragState(control, viewModel, pianoRoll.ViewModel.NotesViewModel);
+                    Cursor = HandCursors.Grabbing;
                 } else {
                     // Clicked on a part
                     bool fadein = false;
@@ -1361,7 +1365,9 @@ namespace OpenUtau.App.Views {
                 }
                 bool skip = point.Position.X < hitPartControl.Bounds.Left + ViewConstants.ResizeMargin;
                 bool trim = point.Position.X > hitPartControl.Bounds.Right - ViewConstants.ResizeMargin;
-                if (fadein || fadeout) {
+                if (hitPartControl.HitPianoRollViewportHandle(point.Position - hitPartControl.Bounds.Position)) {
+                    Cursor = HandCursors.Grab;
+                } else if (fadein || fadeout) {
                     Cursor = ViewConstants.cursorHand;
                 } else if (skip || trim) {
                     Cursor = ViewConstants.cursorSizeWE;
