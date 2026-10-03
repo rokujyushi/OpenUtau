@@ -179,9 +179,10 @@ namespace OpenUtau.App.Controls {
                 change.Property == TickWidthProperty) {
                 SetPosition();
             }
-            if (change.Property == PianoRollViewTickOffsetProperty ||
-                change.Property == PianoRollViewViewportTicksProperty ||
-                change.Property == SelectedProperty ||
+            // The piano roll viewport only redraws the open part, which PartsCanvas
+            // invalidates itself; redrawing every part here made scrolling the piano
+            // roll redraw all parts, waveforms included, on every frame.
+            if (change.Property == SelectedProperty ||
                 change.Property == TextProperty || 
                 change.Property == FadeInProperty ||
                 change.Property == FadeOutProperty) {
