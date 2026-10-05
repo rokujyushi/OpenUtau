@@ -116,7 +116,7 @@ namespace OpenUtau.Core.Render {
         bool SupportsRenderPitch => false;
         bool SupportsRealCurve => false;
         bool SupportsPhonemeEnvelope => true;
-        LivePitchCost LivePitchCost { get { return LivePitchCost.Unsupported; } }
+        LivePitchCost LivePitchCost => LivePitchCost.Unsupported;
         /// <summary>
         /// Whether live pitch Fast mode (fewer sampling steps) makes a difference.
         /// When false, Fast mode runs as Normal for this renderer.
