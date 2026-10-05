@@ -26,6 +26,9 @@ namespace OpenUtau.App.ViewModels {
         [Reactive] public partial Bitmap? Avatar { get; set; }
         [Reactive] public partial string? Info { get; set; }
         [Reactive] public partial bool HasWebsite { get; set; }
+        // Singers loaded from a voicebank folder, which keep their settings in character.yaml.
+        [Reactive] public partial bool HasCharacterYaml { get; set; }
+        [Reactive] public partial bool HasDsConfig { get; set; }
         public bool IsClassic => Singer != null && Singer.SingerType == USingerType.Classic;
         public bool UseSearchAlias => Singer != null && (Singer.SingerType == USingerType.Classic || Singer.SingerType == USingerType.Enunu);
         public ObservableCollectionExtended<USubbank> Subbanks => subbanks;
@@ -90,6 +93,9 @@ namespace OpenUtau.App.ViewModels {
                         DisplayedOtos.AddRange(singer.Otos);
                         Info = $"Author: {singer.Author}\nVoice: {singer.Voice}\nWeb: {singer.Web}\nVersion: {singer.Version}\n{singer.OtherInfo}\n\n{string.Join("\n", singer.Errors)}";
                         HasWebsite = !string.IsNullOrEmpty(singer.Web);
+                        HasCharacterYaml = singer.SingerType is USingerType.Classic or USingerType.Enunu or USingerType.DiffSinger
+                            && Directory.Exists(singer.Location);
+                        HasDsConfig = HasCharacterYaml && File.Exists(Path.Combine(singer.Location, "dsconfig.yaml"));
                         if (Singer is ClassicSinger cSinger) {
                             UseFilenameAsAlias = cSinger.UseFilenameAsAlias ?? false;
                         }
@@ -359,11 +365,13 @@ namespace OpenUtau.App.ViewModels {
 
         public void OpenLocation() {
             if (Singer != null) {
-                OpenLocation(Singer);
+                OpenSingerLocation(Singer);
             }
         }
 
-        public static void OpenLocation(USinger singer) {
+        // Not an OpenLocation overload: the Location button binds OpenLocation by name, and a
+        // same-named overload makes Avalonia compile an invalid command for it.
+        public static void OpenSingerLocation(USinger singer) {
             try {
                 var location = singer.Location;
                 if (File.Exists(location)) {
@@ -401,13 +409,19 @@ namespace OpenUtau.App.ViewModels {
             Avatar = LoadAvatar(Singer);
             Otos.Clear();
             Otos.AddRange(Singer.Otos);
+            // Reload replaces the oto objects. Do not leave the editor bound to the old ones.
+            Search();
             LoadSubbanks();
 
             DocManager.Inst.ExecuteCmd(new SingersRefreshedNotification(Singer));
             DocManager.Inst.ExecuteCmd(new OtoChangedNotification());
-            if (Otos.Count > 0) {
-                index = Math.Clamp(index, 0, Otos.Count - 1);
+            if (DisplayedOtos.Count > 0) {
+                index = Math.Clamp(index, 0, DisplayedOtos.Count - 1);
                 SelectedIndex = index;
+                SelectedOto = DisplayedOtos[index];
+            } else {
+                SelectedIndex = -1;
+                SelectedOto = null;
             }
         }
 
