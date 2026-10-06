@@ -119,6 +119,17 @@ namespace OpenUtau.App.Controls {
             set => SetAndRaise(PianoRollViewViewportTicksProperty, ref pianoRollViewViewportTicks, value);
         }
 
+        private bool _pianoRollViewportHovered;
+        private bool PianoRollViewportHovered {
+            get => _pianoRollViewportHovered;
+            set {
+                if (_pianoRollViewportHovered != value) {
+                    _pianoRollViewportHovered = value;
+                    InvalidateVisual();
+                }
+            }
+        }
+
         private double tickWidth;
         private double trackHeight;
         private double viewWidth;
@@ -175,6 +186,10 @@ namespace OpenUtau.App.Controls {
                     }
                 }, CancellationToken.None, TaskContinuationOptions.None, scheduler);
             }
+
+            this.PointerMoved += (o, e) => PointerChanged(e.GetPosition(this));
+            this.PointerEntered += (o, e) => PointerChanged(e.GetPosition(this));
+            this.PointerExited += (_, _) => PianoRollViewportHovered = false;
         }
 
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change) {
@@ -248,7 +263,7 @@ namespace OpenUtau.App.Controls {
                 // Highlight
                 if (PianoRollViewportRect() is Rect vpRect) {
                     context.DrawRectangle(viewportFill, viewportPen, new RoundedRect(vpRect, new CornerRadius(3)));
-                    if (GripRect(vpRect) is Rect grip) {
+                    if (PianoRollViewportHovered && GripRect(vpRect) is Rect grip) {
                         // A 3 by 3 grid of dots.
                         for (int column = 0; column < 3; ++column) {
                             for (int row = 0; row < 3; ++row) {
@@ -330,6 +345,12 @@ namespace OpenUtau.App.Controls {
             return PianoRollViewportRect() is Rect vpRect
                 && GripRect(vpRect) is Rect grip
                 && grip.Inflate(new Thickness(6, 8)).Contains(point);
+        }
+
+        private void PointerChanged(Point point) {
+            if (PianoRollViewportRect() is Rect vpRect) {
+                PianoRollViewportHovered = vpRect.Contains(point);
+            }
         }
 
         private WriteableBitmap GetBitmap(double width) {
