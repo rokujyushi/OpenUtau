@@ -36,15 +36,15 @@ public sealed class Hnsep {
     readonly InferenceSession session;
     readonly HnsepConfig config;
     readonly double[] window;
+    readonly bool isCpuRunner;
+    readonly object runLock = new object();
 
     public int SampleRate => config.sample_rate;
 
     public Hnsep(string modelPath, HnsepConfig config) {
         this.config = config;
-        // Always CPU: it's faster than DirectML for this network (whose LSTMs are slow
-        // there), and callers run it from several threads, which CPU sessions allow and
-        // DirectML sessions don't.
-        session = Onnx.getInferenceSession(modelPath, OnnxRunnerChoice.CPU);
+        session = Onnx.getInferenceSession(modelPath);
+        isCpuRunner = Onnx.IsCpuRunner();
         window = PeriodicHann(config.n_fft);
     }
 
@@ -61,12 +61,7 @@ public sealed class Hnsep {
         string? dir = PackageManager.Inst.GetInstalledPath(PackageId);
         string? configPath = dir == null ? null : Path.Combine(dir, "hnsep.yaml");
         if (configPath == null || !File.Exists(configPath)) {
-            throw new MessageCustomizableException(
-                $"Error loading package \"{PackageId}\"",
-                "<translate:packages.errors.missing>",
-                new Exception($"Error loading package \"{PackageId}\""),
-                true,
-                new string[] { PackageId });
+            throw new MissingPackageException(PackageId);
         }
         var config = Yaml.DefaultDeserializer.Deserialize<HnsepConfig>(File.ReadAllText(configPath));
         return new Hnsep(Path.Combine(dir!, config.model), config);
@@ -80,11 +75,21 @@ public sealed class Hnsep {
         return w;
     }
 
-    /// <summary>The harmonic part of x (same length, at <see cref="SampleRate"/>); the noise part is x minus it.</summary>
+    /// <summary>
+    /// The harmonic part of x (same length, at <see cref="SampleRate"/>); the noise part is x minus it.
+    /// Callers run it from several threads, which a CPU session allows and a GPU session
+    /// (DirectML, CoreML, ...) doesn't, so a GPU run is locked.
+    /// </summary>
     public float[] Harmonic(float[] x) => Separate(x, config.n_fft, config.hop_length, window, input => {
+        if (isCpuRunner) return Run(input);
+        lock (runLock) return Run(input);
+    });
+
+    float[] Run(DenseTensor<float> input) {
+        using var dmlScope = Onnx.EnterDmlScope();
         using var results = session.Run(new[] { NamedOnnxValue.CreateFromTensor(session.InputNames[0], input) });
         return results.First().AsTensor<float>().ToDenseTensor().Buffer.ToArray();
-    });
+    }
 
     /// <summary>
     /// STFT, mask, ISTFT. predictMask maps the [1, 2, bins, frames] spectrum to a
