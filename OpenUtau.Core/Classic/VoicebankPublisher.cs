@@ -1,4 +1,4 @@
-using Ignore;
+﻿using Ignore;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -62,7 +62,11 @@ namespace OpenUtau.Classic {
             progress.Invoke(0, $"Publishing {singer.Name}");
             //Write singer type into character.yaml
             try {
-                ModifyConfig(singer, config => config.SingerType = singer.SingerType.ToString().ToLower());
+                ModifyConfig(singer, config => {
+                    config.SingerType = SingerTypeUtils.SingerTypeNames.TryGetValue(singer.SingerType, out var name)
+                        ? name
+                        : singer.SingerType.ToString().ToLower();
+                });
             } catch (Exception e) {  }
             var packList = GetFilesToPack(location);
             int index = 0;
