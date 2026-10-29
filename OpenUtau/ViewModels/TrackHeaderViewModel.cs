@@ -79,7 +79,6 @@ namespace OpenUtau.App.ViewModels {
                     UpdateRecentSingers(singer);
                     Preferences.Save();
                     MessageBus.Current.SendMessage(new PianorollRefreshEvent("Part"));
-                    MessageBus.Current.SendMessage(new TracksRefreshEvent());
                 }
                 MessageBus.Current.SendMessage(new TracksRefreshEvent());
                 this.RaisePropertyChanged(nameof(Singer));
@@ -394,6 +393,12 @@ namespace OpenUtau.App.ViewModels {
                 ? ThemeManager.GetTrackColor(track.TrackColor)
                 : ThemeManager.GetTrackColor("Blue");
             RefreshSelectionStyle();
+            // Commands change the track directly, so read the mixer values back. Assigning them
+            // re-sends the volume/pan notifications that keep the audio engine in sync.
+            Volume = track.Volume;
+            Pan = track.Pan;
+            Mute = track.Mute;
+            JudgeMuted();
             this.RaisePropertyChanged(nameof(Singer));
             this.RaisePropertyChanged(nameof(TrackNo));
             this.RaisePropertyChanged(nameof(TrackName));
@@ -521,7 +526,7 @@ namespace OpenUtau.App.ViewModels {
             if (targetTracks.Count <= 1) {
                 targetTracks = project.tracks.ToList();
             }
-            var phonemizerFactory = PhonemizerFactory.Get(track.Phonemizer.GetType());
+            var phonemizerFactory = PhonemizerFactory.Get(track.Phonemizer.Id);
             DocManager.Inst.StartUndoGroup("command.track.setting");
             foreach (var targetTrack in targetTracks) {
                 if (targetTrack == track) {
@@ -530,7 +535,7 @@ namespace OpenUtau.App.ViewModels {
                 if (track.Singer != targetTrack.Singer) {
                     ApplySingerToTrack(targetTrack, track.Singer);
                 }
-                if (targetTrack.Phonemizer.GetType() != track.Phonemizer.GetType()) {
+                if (targetTrack.Phonemizer.Id != track.Phonemizer.Id) {
                     var phonemizer = phonemizerFactory?.Create();
                     if (phonemizer != null) {
                         DocManager.Inst.ExecuteCmd(new TrackChangePhonemizerCommand(project, targetTrack, phonemizer));
